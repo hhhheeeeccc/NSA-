@@ -1,0 +1,6 @@
+zinah_app/.gradle/
+zinah_app/build/
+zinah_app/app/build/
+zinah_app/local.properties
+*.iml
+.idea/
