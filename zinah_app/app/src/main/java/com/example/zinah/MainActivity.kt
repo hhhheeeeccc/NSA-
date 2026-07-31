@@ -1,10 +1,14 @@
 package com.example.zinah
 
 import android.Manifest
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -24,10 +28,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.ExistingPeriodicWorkPolicy
-import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
 
@@ -51,8 +51,7 @@ class MainActivity : ComponentActivity() {
 
     private fun getSavedInterval(): Long {
         val sharedPref = getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
-        // Default to 60 minutes if not set
-        return sharedPref.getLong("interval", 60L)
+        return sharedPref.getLong("interval", 60L) // Default to 60 minutes
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -60,6 +59,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         askNotificationPermission()
+        checkExactAlarmPermission()
 
         setContent {
             MaterialTheme(
@@ -110,7 +110,7 @@ class MainActivity : ComponentActivity() {
                                 OutlinedTextField(
                                     value = inputText,
                                     onValueChange = { inputText = it },
-                                    label = { Text("أدخل الدقائق (أقل شيء 15)") },
+                                    label = { Text("أدخل الدقائق (أقل شيء 1 دقيقة)") },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth(0.8f)
@@ -120,12 +120,12 @@ class MainActivity : ComponentActivity() {
                                 Button(onClick = {
                                     val minutes = inputText.toLongOrNull()
                                     if (minutes != null) {
-                                        if (minutes >= 15) {
+                                        if (minutes >= 1) {
                                             selectedInterval = minutes
                                             saveInterval(minutes)
-                                            scheduleDhikr(minutes, TimeUnit.MINUTES)
+                                            scheduleExactDhikrAlarm(minutes)
                                         } else {
-                                            Toast.makeText(this@MainActivity, "أقل مدة مسموحة هي 15 دقيقة", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(this@MainActivity, "أقل مدة مسموحة هي 1 دقيقة", Toast.LENGTH_LONG).show()
                                         }
                                     } else {
                                         Toast.makeText(this@MainActivity, "الرجاء إدخال رقم صحيح", Toast.LENGTH_SHORT).show()
@@ -169,17 +169,45 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun scheduleDhikr(interval: Long, timeUnit: TimeUnit) {
-        val dhikrRequest = PeriodicWorkRequestBuilder<DhikrWorker>(interval, timeUnit)
-            .build()
+    private fun scheduleExactDhikrAlarm(intervalMinutes: Long) {
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(this, DhikrAlarmReceiver::class.java)
 
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "ZinahPeriodicDhikr",
-            ExistingPeriodicWorkPolicy.UPDATE,
-            dhikrRequest
+        // Cancel any existing alarm before scheduling a new one
+        val pendingIntent = PendingIntent.getBroadcast(
+            this,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        alarmManager.cancel(pendingIntent)
 
-        Toast.makeText(this, "تم ضبط التذكير كل $interval دقيقة", Toast.LENGTH_SHORT).show()
+        val triggerTime = System.currentTimeMillis() + (intervalMinutes * 60 * 1000)
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
+                } else {
+                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
+                }
+            } else {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
+            }
+            Toast.makeText(this, "تم ضبط التذكير كل $intervalMinutes دقيقة", Toast.LENGTH_SHORT).show()
+        } catch (e: SecurityException) {
+            Toast.makeText(this, "لا يوجد إذن لضبط التنبيهات الدقيقة", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun checkExactAlarmPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            if (!alarmManager.canScheduleExactAlarms()) {
+                val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                startActivity(intent)
+            }
+        }
     }
 
     private fun askNotificationPermission() {
