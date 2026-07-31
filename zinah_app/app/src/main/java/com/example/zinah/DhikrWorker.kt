@@ -2,9 +2,7 @@ package com.example.zinah
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.os.Build
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
@@ -18,11 +16,11 @@ class DhikrWorker(context: Context, workerParams: WorkerParameters) : Worker(con
         // Acquire WakeLock to wake up device from sleep
         val powerManager = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
         val wakeLock = powerManager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+            PowerManager.PARTIAL_WAKE_LOCK,
             "Zinah:DhikrWakeLock"
         )
         wakeLock.setReferenceCounted(false)
-        wakeLock.acquire(TimeUnit.MINUTES.toMillis(1)) // 1 minute max
+        wakeLock.acquire(TimeUnit.MINUTES.toMillis(1))
 
         try {
             showNotification()
@@ -33,6 +31,17 @@ class DhikrWorker(context: Context, workerParams: WorkerParameters) : Worker(con
         }
 
         return Result.success()
+    }
+
+    private fun getCustomAdhkar(): List<String> {
+        val sharedPref = applicationContext.getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
+        val count = sharedPref.getInt("customAdhkarCount", 0)
+        val list = mutableListOf<String>()
+        for (i in 0 until count) {
+            val text = sharedPref.getString("customDhikr_$i", "") ?: ""
+            if (text.isNotEmpty()) list.add(text)
+        }
+        return list
     }
 
     private fun showNotification() {
@@ -53,15 +62,15 @@ class DhikrWorker(context: Context, workerParams: WorkerParameters) : Worker(con
             notificationManager.createNotificationChannel(channel)
         }
 
-        // Randomly pick between dhikr and dua
-        val randomText = if (Math.random() < 0.5) {
-            AdhkarData.adhkarList.random()
-        } else {
-            AdhkarData.duaaList.random()
-        }
+        // Build all available items: adhkar + dua + custom
+        val customList = getCustomAdhkar()
+        val allItems = mutableListOf<String>()
+        allItems.addAll(AdhkarData.adhkarList)
+        allItems.addAll(AdhkarData.duaaList)
+        allItems.addAll(customList)
 
-        // Get current interval label for the notification
-        val intervalLabel = getIntervalLabel()
+        // Pick random item
+        val randomText = if (allItems.isNotEmpty()) allItems.random() else "سبحان الله وبحمده"
 
         val notification = NotificationCompat.Builder(applicationContext, channelId)
             .setContentTitle("زينة - تذكير بذكر الله")
@@ -74,13 +83,5 @@ class DhikrWorker(context: Context, workerParams: WorkerParameters) : Worker(con
             .build()
 
         notificationManager.notify(System.currentTimeMillis().toInt(), notification)
-    }
-
-    private fun getIntervalLabel(): String {
-        val sharedPref = applicationContext.getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
-        val interval = sharedPref.getLong("interval", 15L)
-        val isMinutes = sharedPref.getBoolean("isMinutes", true)
-        val timeUnit = if (isMinutes) "دقيقة" else "ساعة"
-        return "كل $interval $timeUnit"
     }
 }
