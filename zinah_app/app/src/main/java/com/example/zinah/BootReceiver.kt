@@ -11,13 +11,10 @@ import java.util.concurrent.TimeUnit
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
-            // Restore the user's saved schedule on boot
             val sharedPref = context.getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
-            val interval = sharedPref.getLong("interval", 15L)
-            val isMinutes = sharedPref.getBoolean("isMinutes", true)
-            val timeUnit = if (isMinutes) TimeUnit.MINUTES else TimeUnit.HOURS
+            val interval = sharedPref.getLong("interval", 60L) // Default to 60 mins if not set
 
-            val dhikrRequest = PeriodicWorkRequestBuilder<DhikrWorker>(interval, timeUnit).build()
+            val dhikrRequest = PeriodicWorkRequestBuilder<DhikrWorker>(interval, TimeUnit.MINUTES).build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 "ZinahPeriodicDhikr",
                 ExistingPeriodicWorkPolicy.KEEP,
