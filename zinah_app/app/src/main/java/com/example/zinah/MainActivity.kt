@@ -231,66 +231,39 @@ class MainActivity : ComponentActivity() {
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
-                                    colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                                    elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
+                                    colors = CardDefaults.cardColors(containerColor = ZinahTheme.EmeraldDeep),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                                 ) {
-                                    Box(
+                                    Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(160.dp)
-                                            .background(HeroCardGradient)
+                                            .padding(24.dp),
+                                        verticalArrangement = Arrangement.Center,
+                                        horizontalAlignment = Alignment.Start
                                     ) {
-                                        GeometricPatternBackground(
-                                            modifier = Modifier.fillMaxSize(),
-                                            color = ZinahTheme.Gold.copy(alpha = 0.08f)
-                                        )
-                                        // Gold glow
-                                        Box(
-                                            modifier = Modifier
-                                                .size(140.dp)
-                                                .align(Alignment.TopEnd)
-                                                .offset(x = 50.dp, y = (-50).dp)
-                                                .blur(50.dp)
-                                                .background(ZinahTheme.Gold.copy(alpha = 0.2f))
-                                        )
-                                        EightPointStar(
-                                            modifier = Modifier
-                                                .align(Alignment.BottomStart)
-                                                .padding(16.dp),
-                                            size = 48.dp,
-                                            color = ZinahTheme.Gold.copy(alpha = 0.4f)
-                                        )
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(24.dp),
-                                            verticalArrangement = Arrangement.Center,
-                                            horizontalAlignment = Alignment.Start
-                                        ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                CrescentMoon(size = 32.dp, primaryColor = ZinahTheme.GoldBright)
-                                                Spacer(modifier = Modifier.width(12.dp))
-                                                Text(
-                                                    "أذكار وأدعية",
-                                                    color = ZinahTheme.GoldBright,
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                    fontWeight = FontWeight.SemiBold
-                                                )
-                                            }
-                                            Spacer(modifier = Modifier.height(8.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("☪", fontSize = 28.sp, color = ZinahTheme.GoldBright)
+                                            Spacer(modifier = Modifier.width(12.dp))
                                             Text(
-                                                "${AdhkarData.allAdhkar.size} ذكر ودعاء",
-                                                color = Color.White,
-                                                style = MaterialTheme.typography.headlineMedium,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                "تذكيرات تلقائية تساعدك على ذكر الله",
-                                                color = Color.White.copy(alpha = 0.8f),
-                                                style = MaterialTheme.typography.bodySmall
+                                                "أذكار وأدعية",
+                                                color = ZinahTheme.GoldBright,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.SemiBold
                                             )
                                         }
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            "${AdhkarData.allAdhkar.size} ذكر ودعاء",
+                                            color = Color.White,
+                                            fontSize = 28.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            "تذكيرات تلقائية تساعدك على ذكر الله",
+                                            color = Color.White.copy(alpha = 0.8f),
+                                            fontSize = 12.sp
+                                        )
                                     }
                                 }
                             }

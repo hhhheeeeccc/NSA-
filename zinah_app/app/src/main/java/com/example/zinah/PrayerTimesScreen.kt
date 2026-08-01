@@ -2,21 +2,10 @@ package com.example.zinah
 
 import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,23 +14,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -51,8 +35,13 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
- * Premium "Prayer Times" screen with hero countdown card, prayer list with
- * per-prayer icons and accent colors, and elegant settings sections.
+ * Prayer Times screen — simplified, stable version.
+ *
+ * Design goals:
+ *  - Beautiful but WITHOUT any composable that can crash on older Android:
+ *    no Modifier.blur(), no custom Canvas patterns, no infinite animations.
+ *  - Uses solid colors + simple gradients only.
+ *  - All icons come from material-icons-core (guaranteed available).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,7 +49,6 @@ fun PrayerTimesScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // ---- state ----
     var featureEnabled by remember {
         mutableStateOf(PrayerTimePreferences.isFeatureEnabled(context))
     }
@@ -81,11 +69,11 @@ fun PrayerTimesScreen() {
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showMethodDropdown by remember { mutableStateOf(false) }
 
-    // Tick every 1 second for the countdown
+    // Tick every 30 seconds (less aggressive than 1s, still fresh enough)
     var nowTick by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
-            kotlinx.coroutines.delay(1_000L)
+            kotlinx.coroutines.delay(30_000L)
             nowTick = System.currentTimeMillis()
         }
     }
@@ -104,9 +92,7 @@ fun PrayerTimesScreen() {
     }
 
     LaunchedEffect(Unit) {
-        // On first launch: do NOT auto-trigger GPS (would crash if permission not granted yet).
-        // If a manual city is saved, use it. Otherwise just show empty state and let the
-        // user tap "Refresh" to grant permission / pick a city.
+        // Do NOT auto-trigger GPS on first launch (would crash if permission not granted)
         if (!useGps) {
             refreshTimings(context, useGps, manualCity, methodIndex,
                 setTimings = { timings = it },
@@ -114,83 +100,31 @@ fun PrayerTimesScreen() {
                 setError = { errorMessage = it },
                 setCityName = { cityName = it })
         } else if (LocationHelper.hasLocationPermission(context)) {
-            // Only auto-trigger GPS if permission is ALREADY granted (user has used the app before)
             refreshTimings(context, useGps, manualCity, methodIndex,
                 setTimings = { timings = it },
                 setLoading = { isLoading = it },
                 setError = { errorMessage = it },
                 setCityName = { cityName = it })
         }
-        // Otherwise: do nothing — wait for the user to tap the refresh button.
     }
 
-    ZinahTheme {
-        Surface(
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = ZinahTheme.Cream
+    ) {
+        LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            color = ZinahTheme.Cream
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // ===== Hero countdown card =====
-                item {
-                    HeroCountdownCard(
-                        featureEnabled = featureEnabled,
-                        onToggleFeature = { newValue ->
-                            featureEnabled = newValue
-                            PrayerTimePreferences.setFeatureEnabled(context, newValue)
-                            if (newValue) {
-                                scope.launch {
-                                    refreshTimings(context, useGps, manualCity, methodIndex,
-                                        setTimings = { timings = it },
-                                        setLoading = { isLoading = it },
-                                        setError = { errorMessage = it },
-                                        setCityName = { cityName = it })
-                                }
-                            } else {
-                                PrayerTimeScheduler.cancelAll(context)
-                            }
-                        },
-                        timings = timings,
-                        nowTick = nowTick,
-                        cityName = cityName,
-                        hijriDate = timings?.hijriDate ?: "",
-                        gregorianDate = timings?.gregorianDate ?: ""
-                    )
-                }
-
-                // ===== Location & refresh =====
-                item {
-                    LocationCard(
-                        cityName = cityName,
-                        useGps = useGps,
-                        manualCity = manualCity,
-                        onUseGpsChange = { newValue ->
-                            useGps = newValue
-                            PrayerTimePreferences.setUseManualCity(context, !newValue)
-                            if (newValue) {
-                                val perms = arrayOf(
-                                    Manifest.permission.ACCESS_FINE_LOCATION,
-                                    Manifest.permission.ACCESS_COARSE_LOCATION
-                                )
-                                if (LocationHelper.hasLocationPermission(context)) {
-                                    scope.launch {
-                                        refreshTimings(context, useGps, manualCity, methodIndex,
-                                            setTimings = { timings = it },
-                                            setLoading = { isLoading = it },
-                                            setError = { errorMessage = it },
-                                            setCityName = { cityName = it })
-                                    }
-                                } else {
-                                    locationPermissionLauncher.launch(perms)
-                                }
-                            }
-                        },
-                        onManualCityChange = { manualCity = it },
-                        onSaveManualCity = {
-                            PrayerTimePreferences.setManualCity(context, manualCity)
+            // ===== Hero countdown card =====
+            item {
+                HeroCountdownCard(
+                    featureEnabled = featureEnabled,
+                    onToggleFeature = { newValue ->
+                        featureEnabled = newValue
+                        PrayerTimePreferences.setFeatureEnabled(context, newValue)
+                        if (newValue) {
                             scope.launch {
                                 refreshTimings(context, useGps, manualCity, methodIndex,
                                     setTimings = { timings = it },
@@ -198,88 +132,73 @@ fun PrayerTimesScreen() {
                                     setError = { errorMessage = it },
                                     setCityName = { cityName = it })
                             }
-                        },
-                        onRefresh = {
-                            if (useGps) {
-                                val perms = arrayOf(
-                                    Manifest.permission.ACCESS_FINE_LOCATION,
-                                    Manifest.permission.ACCESS_COARSE_LOCATION
-                                )
-                                if (LocationHelper.hasLocationPermission(context)) {
-                                    scope.launch {
-                                        refreshTimings(context, useGps, manualCity, methodIndex,
-                                            setTimings = { timings = it },
-                                            setLoading = { isLoading = it },
-                                            setError = { errorMessage = it },
-                                            setCityName = { cityName = it })
-                                    }
-                                } else {
-                                    locationPermissionLauncher.launch(perms)
-                                }
-                            } else {
-                                scope.launch {
-                                    refreshTimings(context, useGps, manualCity, methodIndex,
-                                        setTimings = { timings = it },
-                                        setLoading = { isLoading = it },
-                                        setError = { errorMessage = it },
-                                        setCityName = { cityName = it })
-                                }
-                            }
+                        } else {
+                            PrayerTimeScheduler.cancelAll(context)
                         }
-                    )
-                }
+                    },
+                    timings = timings,
+                    nowTick = nowTick,
+                    cityName = cityName,
+                    hijriDate = timings?.hijriDate ?: ""
+                )
+            }
 
-                // ===== Today's prayers section header =====
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            "مواقيت اليوم",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = ZinahTheme.EmeraldDeep
-                        )
-                        if (isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                                color = ZinahTheme.Emerald
+            // ===== Location & refresh =====
+            item {
+                LocationCard(
+                    cityName = cityName,
+                    useGps = useGps,
+                    manualCity = manualCity,
+                    onUseGpsChange = { newValue ->
+                        useGps = newValue
+                        PrayerTimePreferences.setUseManualCity(context, !newValue)
+                        if (newValue) {
+                            val perms = arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
                             )
-                        }
-                    }
-                }
-
-                // ===== 5 prayer cards =====
-                val t = timings
-                if (t != null) {
-                    val now = Calendar.getInstance().apply { timeInMillis = nowTick }
-                    val next = t.nextPrayer(now).first
-                    items(PrayerType.entries) { prayer ->
-                        PrayerCard(
-                            prayer = prayer,
-                            time = formatTime(t.timeFor(prayer)),
-                            isNext = prayer == next,
-                            isEnabled = PrayerTimePreferences.isPrayerEnabled(context, prayer),
-                            onToggleEnabled = { newValue ->
-                                PrayerTimePreferences.setPrayerEnabled(context, prayer, newValue)
-                                if (featureEnabled && newValue) {
-                                    val cal = t.timeFor(prayer)
-                                    if (cal.timeInMillis > System.currentTimeMillis()) {
-                                        PrayerTimeScheduler.scheduleOne(
-                                            context, prayer, cal.timeInMillis
-                                        )
-                                    }
-                                } else if (!newValue) {
-                                    cancelPrayerAlarm(context, prayer)
+                            if (LocationHelper.hasLocationPermission(context)) {
+                                scope.launch {
+                                    refreshTimings(context, useGps, manualCity, methodIndex,
+                                        setTimings = { timings = it },
+                                        setLoading = { isLoading = it },
+                                        setError = { errorMessage = it },
+                                        setCityName = { cityName = it })
                                 }
+                            } else {
+                                locationPermissionLauncher.launch(perms)
                             }
-                        )
-                    }
-                } else if (!isLoading) {
-                    item {
-                        EmptyStateCard(onRetry = {
+                        }
+                    },
+                    onManualCityChange = { manualCity = it },
+                    onSaveManualCity = {
+                        PrayerTimePreferences.setManualCity(context, manualCity)
+                        scope.launch {
+                            refreshTimings(context, useGps, manualCity, methodIndex,
+                                setTimings = { timings = it },
+                                setLoading = { isLoading = it },
+                                setError = { errorMessage = it },
+                                setCityName = { cityName = it })
+                        }
+                    },
+                    onRefresh = {
+                        if (useGps) {
+                            val perms = arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                            if (LocationHelper.hasLocationPermission(context)) {
+                                scope.launch {
+                                    refreshTimings(context, useGps, manualCity, methodIndex,
+                                        setTimings = { timings = it },
+                                        setLoading = { isLoading = it },
+                                        setError = { errorMessage = it },
+                                        setCityName = { cityName = it })
+                                }
+                            } else {
+                                locationPermissionLauncher.launch(perms)
+                            }
+                        } else {
                             scope.launch {
                                 refreshTimings(context, useGps, manualCity, methodIndex,
                                     setTimings = { timings = it },
@@ -287,60 +206,124 @@ fun PrayerTimesScreen() {
                                     setError = { errorMessage = it },
                                     setCityName = { cityName = it })
                             }
-                        })
+                        }
                     }
-                }
+                )
+            }
 
-                // ===== Advanced settings =====
-                item {
-                    Spacer(modifier = Modifier.height(8.dp))
+            // ===== Section header =====
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Text(
-                        "إعدادات متقدمة",
-                        style = MaterialTheme.typography.headlineMedium,
+                        "مواقيت اليوم",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
                         color = ZinahTheme.EmeraldDeep
                     )
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = ZinahTheme.Emerald
+                        )
+                    }
                 }
+            }
 
-                item {
-                    AdvancedSettingsCard(
-                        methodIndex = methodIndex,
-                        adhanSoundIndex = adhanSoundIndex,
-                        fullScreen = fullScreen,
-                        showMethodDropdown = showMethodDropdown,
-                        onShowMethodDropdown = { showMethodDropdown = it },
-                        onMethodChange = { idx ->
-                            methodIndex = idx
-                            PrayerTimePreferences.setCalculationMethod(
-                                context, PrayerTimePreferences.CALCULATION_METHODS[idx].first
-                            )
-                            scope.launch {
-                                refreshTimings(context, useGps, manualCity, methodIndex,
-                                    setTimings = { timings = it },
-                                    setLoading = { isLoading = it },
-                                    setError = { errorMessage = it },
-                                    setCityName = { cityName = it })
+            // ===== 5 prayer cards =====
+            val t = timings
+            if (t != null) {
+                val now = Calendar.getInstance().apply { timeInMillis = nowTick }
+                val next = t.nextPrayer(now).first
+                items(PrayerType.entries) { prayer ->
+                    PrayerCard(
+                        prayer = prayer,
+                        time = formatTime(t.timeFor(prayer)),
+                        isNext = prayer == next,
+                        isEnabled = PrayerTimePreferences.isPrayerEnabled(context, prayer),
+                        onToggleEnabled = { newValue ->
+                            PrayerTimePreferences.setPrayerEnabled(context, prayer, newValue)
+                            if (featureEnabled && newValue) {
+                                val cal = t.timeFor(prayer)
+                                if (cal.timeInMillis > System.currentTimeMillis()) {
+                                    PrayerTimeScheduler.scheduleOne(
+                                        context, prayer, cal.timeInMillis
+                                    )
+                                }
+                            } else if (!newValue) {
+                                cancelPrayerAlarm(context, prayer)
                             }
-                        },
-                        onAdhanSoundChange = { idx ->
-                            adhanSoundIndex = idx
-                            PrayerTimePreferences.setAdhanSoundIndex(context, idx)
-                        },
-                        onFullScreenChange = {
-                            fullScreen = it
-                            PrayerTimePreferences.setFullScreenAdhan(context, it)
                         }
                     )
                 }
-
-                // ===== Error =====
-                if (errorMessage != null) {
-                    item {
-                        ErrorCard(message = errorMessage ?: "")
-                    }
+            } else if (!isLoading) {
+                item {
+                    EmptyStateCard(onRetry = {
+                        scope.launch {
+                            refreshTimings(context, useGps, manualCity, methodIndex,
+                                setTimings = { timings = it },
+                                setLoading = { isLoading = it },
+                                setError = { errorMessage = it },
+                                setCityName = { cityName = it })
+                        }
+                    })
                 }
-
-                item { Spacer(modifier = Modifier.height(80.dp)) }
             }
+
+            // ===== Advanced settings =====
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "إعدادات متقدمة",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ZinahTheme.EmeraldDeep
+                )
+            }
+
+            item {
+                AdvancedSettingsCard(
+                    methodIndex = methodIndex,
+                    adhanSoundIndex = adhanSoundIndex,
+                    fullScreen = fullScreen,
+                    showMethodDropdown = showMethodDropdown,
+                    onShowMethodDropdown = { showMethodDropdown = it },
+                    onMethodChange = { idx ->
+                        methodIndex = idx
+                        PrayerTimePreferences.setCalculationMethod(
+                            context, PrayerTimePreferences.CALCULATION_METHODS[idx].first
+                        )
+                        scope.launch {
+                            refreshTimings(context, useGps, manualCity, methodIndex,
+                                setTimings = { timings = it },
+                                setLoading = { isLoading = it },
+                                setError = { errorMessage = it },
+                                setCityName = { cityName = it })
+                        }
+                    },
+                    onAdhanSoundChange = { idx ->
+                        adhanSoundIndex = idx
+                        PrayerTimePreferences.setAdhanSoundIndex(context, idx)
+                    },
+                    onFullScreenChange = {
+                        fullScreen = it
+                        PrayerTimePreferences.setFullScreenAdhan(context, it)
+                    }
+                )
+            }
+
+            // ===== Error =====
+            if (errorMessage != null) {
+                item {
+                    ErrorCard(message = errorMessage ?: "")
+                }
+            }
+
+            item { Spacer(modifier = Modifier.height(80.dp)) }
         }
     }
 }
@@ -354,166 +337,143 @@ private fun HeroCountdownCard(
     timings: PrayerTimings?,
     nowTick: Long,
     cityName: String,
-    hijriDate: String,
-    gregorianDate: String
+    hijriDate: String
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
+        colors = CardDefaults.cardColors(containerColor = ZinahTheme.EmeraldDeep),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(280.dp)
-                .background(HeroCardGradient)
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Decorative geometric pattern overlay
-            GeometricPatternBackground(
-                modifier = Modifier.fillMaxSize(),
-                color = ZinahTheme.Gold.copy(alpha = 0.08f),
-                starSize = 32.dp,
-                spacing = 56.dp
-            )
-
-            // Soft gold glow in top-left corner
-            Box(
-                modifier = Modifier
-                    .size(180.dp)
-                    .align(Alignment.TopStart)
-                    .offset(x = (-60).dp, y = (-60).dp)
-                    .blur(60.dp)
-                    .background(ZinahTheme.Gold.copy(alpha = 0.18f))
-            )
-
-            // 8-pointed star decoration in top-right
-            EightPointStar(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(16.dp),
-                size = 56.dp,
-                color = ZinahTheme.Gold.copy(alpha = 0.5f),
-                strokeWidth = 1.5.dp
-            )
-
-            // Master toggle switch (top-left)
-            Switch(
-                checked = featureEnabled,
-                onCheckedChange = onToggleFeature,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(16.dp),
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = ZinahTheme.GoldBright,
-                    checkedTrackColor = ZinahTheme.Gold.copy(alpha = 0.4f),
-                    uncheckedThumbColor = Color.White.copy(alpha = 0.7f),
-                    uncheckedTrackColor = Color.White.copy(alpha = 0.15f)
-                )
-            )
-
-            // Main content
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+            // Top row: master toggle + gold accent
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                if (!featureEnabled) {
-                    CrescentMoon(size = 56.dp, primaryColor = ZinahTheme.GoldBright)
-                    Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "مواقيت الصلاة",
+                    color = ZinahTheme.GoldBright,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Switch(
+                    checked = featureEnabled,
+                    onCheckedChange = onToggleFeature,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = ZinahTheme.GoldBright,
+                        checkedTrackColor = ZinahTheme.Gold.copy(alpha = 0.4f),
+                        uncheckedThumbColor = Color.White.copy(alpha = 0.7f),
+                        uncheckedTrackColor = Color.White.copy(alpha = 0.15f)
+                    )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            if (!featureEnabled) {
+                Text(
+                    "☪",
+                    fontSize = 48.sp,
+                    color = ZinahTheme.GoldBright
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "ميزة مواقيت الصلاة معطّلة",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    "فعّل المفتاح في الأعلى لبدء استقبال الأذان",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center
+                )
+            } else {
+                val now = Calendar.getInstance().apply { timeInMillis = nowTick }
+                val next = timings?.nextPrayer(now)
+
+                Text(
+                    "الصلاة القادمة",
+                    color = ZinahTheme.GoldBright,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (next != null) {
+                    val (prayer, cal) = next
                     Text(
-                        "ميزة مواقيت الصلاة معطّلة",
+                        prayer.nameAr,
                         color = Color.White,
-                        style = MaterialTheme.typography.titleLarge,
-                        textAlign = TextAlign.Center
+                        fontSize = 36.sp,
+                        fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "فعّل المفتاح في الأعلى لبدء استقبال الأذان",
-                        color = Color.White.copy(alpha = 0.7f),
-                        style = MaterialTheme.typography.bodySmall,
-                        textAlign = TextAlign.Center
-                    )
-                } else {
-                    val now = Calendar.getInstance().apply { timeInMillis = nowTick }
-                    val next = timings?.nextPrayer(now)
-
-                    Text(
-                        "الصلاة القادمة",
+                        formatTime(cal),
                         color = ZinahTheme.GoldBright,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Medium
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    if (next != null) {
-                        val (prayer, cal) = next
+                    Spacer(modifier = Modifier.height(12.dp))
+                    // Countdown badge
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(ZinahTheme.Gold.copy(alpha = 0.18f))
+                            .padding(horizontal = 20.dp, vertical = 8.dp)
+                    ) {
                         Text(
-                            prayer.nameAr,
-                            color = Color.White,
-                            style = MaterialTheme.typography.displaySmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            formatTime(cal),
+                            "بعد ${formatRemaining(now, cal)}",
                             color = ZinahTheme.GoldBright,
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        // Countdown badge
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(ZinahTheme.Gold.copy(alpha = 0.18f))
-                                .border(1.dp, ZinahTheme.Gold.copy(alpha = 0.5f), RoundedCornerShape(50))
-                                .padding(horizontal = 20.dp, vertical = 8.dp)
-                        ) {
-                            Text(
-                                "بعد ${formatRemaining(now, cal)}",
-                                color = ZinahTheme.GoldBright,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    } else {
-                        Text(
-                            "جارٍ تحميل المواقيت...",
-                            color = Color.White.copy(alpha = 0.7f),
-                            style = MaterialTheme.typography.bodyLarge
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
+                } else {
+                    Text(
+                        "جارٍ تحميل المواقيت...",
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 16.sp
+                    )
+                }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                    // City + date footer
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.LocationOn,
-                            contentDescription = null,
-                            tint = ZinahTheme.GoldBright,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
+                // City + date footer
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.LocationOn,
+                        contentDescription = null,
+                        tint = ZinahTheme.GoldBright,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        cityName,
+                        color = Color.White.copy(alpha = 0.85f),
+                        fontSize = 12.sp
+                    )
+                    if (hijriDate.isNotBlank()) {
                         Text(
-                            cityName,
-                            color = Color.White.copy(alpha = 0.85f),
-                            style = MaterialTheme.typography.labelMedium
+                            "  •  $hijriDate",
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 11.sp
                         )
-                        if (hijriDate.isNotBlank()) {
-                            Text(
-                                "  •  $hijriDate",
-                                color = Color.White.copy(alpha = 0.7f),
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        }
                     }
                 }
             }
@@ -559,12 +519,12 @@ private fun LocationCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         "الموقع الحالي",
-                        style = MaterialTheme.typography.labelMedium,
+                        fontSize = 12.sp,
                         color = ZinahTheme.InkMute
                     )
                     Text(
                         cityName,
-                        style = MaterialTheme.typography.titleMedium,
+                        fontSize = 16.sp,
                         color = ZinahTheme.EmeraldDeep,
                         fontWeight = FontWeight.Bold
                     )
@@ -588,27 +548,45 @@ private fun LocationCard(
 
             // Source toggle: GPS vs manual
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(ZinahTheme.Cream)
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                SegmentedButton(
-                    text = "GPS تلقائي",
-                    icon = Icons.Filled.LocationOn,
-                    selected = useGps,
+                Button(
                     onClick = { onUseGpsChange(true) },
-                    modifier = Modifier.weight(1f)
-                )
-                SegmentedButton(
-                    text = "اختيار يدوي",
-                    icon = Icons.Filled.Edit,
-                    selected = !useGps,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (useGps) ZinahTheme.Emerald else ZinahTheme.EmeraldMist,
+                        contentColor = if (useGps) Color.White else ZinahTheme.Emerald
+                    ),
+                    contentPadding = PaddingValues(vertical = 10.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.LocationOn,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("GPS تلقائي", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Button(
                     onClick = { onUseGpsChange(false) },
-                    modifier = Modifier.weight(1f)
-                )
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (!useGps) ZinahTheme.Emerald else ZinahTheme.EmeraldMist,
+                        contentColor = if (!useGps) Color.White else ZinahTheme.Emerald
+                    ),
+                    contentPadding = PaddingValues(vertical = 10.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Edit,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("اختيار يدوي", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
 
             if (!useGps) {
@@ -636,40 +614,6 @@ private fun LocationCard(
     }
 }
 
-@Composable
-private fun SegmentedButton(
-    text: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (selected) ZinahTheme.Emerald else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (selected) Color.White else ZinahTheme.InkMute,
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text,
-                color = if (selected) Color.White else ZinahTheme.InkSoft,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-            )
-        }
-    }
-}
-
 // ============ PRAYER CARD ============
 
 @Composable
@@ -688,11 +632,11 @@ private fun PrayerCard(
         PrayerType.ISHA -> ZinahTheme.IshaColor
     }
     val icon = when (prayer) {
-        PrayerType.FAJR -> Icons.Filled.Star            // pre-dawn (use star as crescent substitute)
-        PrayerType.DHUHR -> Icons.Filled.WbSunny        // sun
-        PrayerType.ASR -> Icons.Filled.LightMode        // afternoon light
-        PrayerType.MAGHRIB -> Icons.Filled.BrightnessLow// sunset
-        PrayerType.ISHA -> Icons.Filled.Bedtime         // night moon
+        PrayerType.FAJR -> Icons.Filled.Star
+        PrayerType.DHUHR -> Icons.Filled.WbSunny
+        PrayerType.ASR -> Icons.Filled.WbSunny
+        PrayerType.MAGHRIB -> Icons.Filled.Star
+        PrayerType.ISHA -> Icons.Filled.Bedtime
     }
 
     Card(
@@ -702,7 +646,7 @@ private fun PrayerCard(
             containerColor = if (isNext) ZinahTheme.EmeraldDeep else Color.White
         ),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isNext) 8.dp else 2.dp
+            defaultElevation = if (isNext) 6.dp else 2.dp
         )
     ) {
         Row(
@@ -735,21 +679,21 @@ private fun PrayerCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     prayer.nameAr,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = if (isNext) Color.White else ZinahTheme.Ink,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isNext) Color.White else ZinahTheme.Ink
                 )
                 if (isNext) {
                     Text(
                         "التالية",
-                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 11.sp,
                         color = ZinahTheme.GoldBright,
                         fontWeight = FontWeight.SemiBold
                     )
                 } else if (!isEnabled) {
                     Text(
                         "معطّل",
-                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 11.sp,
                         color = ZinahTheme.InkMute
                     )
                 }
@@ -757,7 +701,7 @@ private fun PrayerCard(
 
             Text(
                 time,
-                style = MaterialTheme.typography.titleLarge,
+                fontSize = 18.sp,
                 color = if (isNext) ZinahTheme.GoldBright else ZinahTheme.EmeraldDeep,
                 fontWeight = FontWeight.Bold
             )
@@ -801,8 +745,10 @@ private fun AdvancedSettingsCard(
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             // Method
-            Text("طريقة الحساب", style = MaterialTheme.typography.titleMedium,
-                color = ZinahTheme.EmeraldDeep, fontWeight = FontWeight.Bold)
+            Text("طريقة الحساب",
+                fontSize = 16.sp,
+                color = ZinahTheme.EmeraldDeep,
+                fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(8.dp))
             Box {
                 OutlinedButton(
@@ -839,28 +785,30 @@ private fun AdvancedSettingsCard(
             Spacer(modifier = Modifier.height(20.dp))
 
             // Adhan sound
-            Text("صوت الأذان", style = MaterialTheme.typography.titleMedium,
-                color = ZinahTheme.EmeraldDeep, fontWeight = FontWeight.Bold)
+            Text("صوت الأذان",
+                fontSize = 16.sp,
+                color = ZinahTheme.EmeraldDeep,
+                fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                listOf(
-                    "مكة" to 0,
-                    "المدينة" to 1,
-                    "نغمة قصيرة" to 2
-                ).forEach { (label, idx) ->
-                    FilterChip(
-                        selected = adhanSoundIndex == idx,
+                listOf("مكة" to 0, "المدينة" to 1, "نغمة قصيرة" to 2).forEach { (label, idx) ->
+                    Button(
                         onClick = { onAdhanSoundChange(idx) },
-                        label = { Text(label) },
                         modifier = Modifier.weight(1f),
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = ZinahTheme.Emerald,
-                            selectedLabelColor = Color.White
-                        )
-                    )
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (adhanSoundIndex == idx) ZinahTheme.Emerald
+                                             else ZinahTheme.EmeraldMist,
+                            contentColor = if (adhanSoundIndex == idx) Color.White
+                                           else ZinahTheme.Emerald
+                        ),
+                        contentPadding = PaddingValues(vertical = 8.dp)
+                    ) {
+                        Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
 
@@ -888,10 +836,11 @@ private fun AdvancedSettingsCard(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text("شاشة الأذان الكاملة",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = ZinahTheme.Ink)
+                        fontSize = 14.sp,
+                        color = ZinahTheme.Ink,
+                        fontWeight = FontWeight.Medium)
                     Text("نافذة منبثقة عند دخول الوقت",
-                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 11.sp,
                         color = ZinahTheme.InkMute)
                 }
                 Switch(
@@ -925,14 +874,15 @@ private fun EmptyStateCard(onRetry: () -> Unit) {
                 .padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            EightPointStar(size = 64.dp, color = ZinahTheme.Gold.copy(alpha = 0.5f))
+            Text("☪", fontSize = 48.sp, color = ZinahTheme.Gold)
             Spacer(modifier = Modifier.height(16.dp))
             Text("لم يتم تحميل المواقيت بعد",
-                style = MaterialTheme.typography.titleMedium,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
                 color = ZinahTheme.Ink)
             Spacer(modifier = Modifier.height(4.dp))
             Text("اضغط لتحديث البيانات",
-                style = MaterialTheme.typography.bodySmall,
+                fontSize = 12.sp,
                 color = ZinahTheme.InkMute)
             Spacer(modifier = Modifier.height(16.dp))
             Button(
@@ -965,8 +915,7 @@ private fun ErrorCard(message: String) {
             Icon(Icons.Filled.Warning, contentDescription = null,
                 tint = ZinahTheme.Rose, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(12.dp))
-            Text(message, color = Color(0xFFB71C1C),
-                style = MaterialTheme.typography.bodyMedium)
+            Text(message, color = Color(0xFFB71C1C), fontSize = 13.sp)
         }
     }
 }
@@ -983,12 +932,10 @@ private fun formatRemaining(now: java.util.Calendar, target: java.util.Calendar)
     if (diff <= 0) return "الآن"
     val hours = TimeUnit.MILLISECONDS.toHours(diff)
     val mins = TimeUnit.MILLISECONDS.toMinutes(diff) % 60
-    val secs = TimeUnit.MILLISECONDS.toSeconds(diff) % 60
     return when {
         hours > 0 && mins > 0 -> "$hours ساعة و $mins دقيقة"
         hours > 0 -> "$hours ساعة"
-        mins > 0 -> "$mins دقيقة و $secs ثانية"
-        else -> "$secs ثانية"
+        else -> "$mins دقيقة"
     }
 }
 
@@ -1050,7 +997,6 @@ private suspend fun refreshTimings(
             }
         }
     } catch (e: Throwable) {
-        // Last-resort safety net — never let this function throw
         Log.e("PrayerTimesScreen", "refreshTimings crashed", e)
         AdhanApiService.Result.Error("حدث خطأ غير متوقع: ${e.message ?: "سبب غير معروف"}")
     }
