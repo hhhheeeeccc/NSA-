@@ -77,7 +77,7 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
 
         val randomDhikr = if (allItems.isNotEmpty()) allItems.random() else "سبحان الله وبحمده"
 
-        // Start the overlay service for the side logo
+        // Start the overlay service for the side notification (the main visual notification)
         val overlayIntent = Intent(context, DhikrOverlayService::class.java).apply {
             putExtra("dhikr_text", randomDhikr)
         }
