@@ -84,6 +84,16 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
         notificationManager.notify(System.currentTimeMillis().toInt(), notification)
     }
 
+    private fun getCustomAdhkar(sharedPref: android.content.SharedPreferences): List<String> {
+        val count = sharedPref.getInt("customAdhkarCount", 0)
+        val list = mutableListOf<String>()
+        for (i in 0 until count) {
+            val text = sharedPref.getString("customDhikr_$i", "") ?: ""
+            if (text.isNotEmpty()) list.add(text)
+        }
+        return list
+    }
+
     private fun scheduleNextAlarm(context: Context) {
         val sharedPref = context.getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
         val intervalMinutes = sharedPref.getLong("interval", 15L)
