@@ -105,22 +105,31 @@ object PrayerTimeScheduler {
 
     /**
      * Cancels all 5 prayer alarms (does not affect dhikr alarms).
+     * Wrapped in try/catch — alarmManager.cancel can throw SecurityException on rare edge cases.
      */
     fun cancelAll(context: Context) {
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        for (prayer in PrayerType.entries) {
-            val intent = Intent(context, PrayerAlarmReceiver::class.java).apply {
-                action = "com.example.zinah.PRAYER_ALARM"
+        try {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            for (prayer in PrayerType.entries) {
+                val intent = Intent(context, PrayerAlarmReceiver::class.java).apply {
+                    action = "com.example.zinah.PRAYER_ALARM"
+                }
+                val pendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    PrayerType.alarmRequestCode(prayer),
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                try {
+                    alarmManager.cancel(pendingIntent)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to cancel alarm for ${prayer.nameAr}: ${e.message}")
+                }
             }
-            val pendingIntent = PendingIntent.getBroadcast(
-                context,
-                PrayerType.alarmRequestCode(prayer),
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            alarmManager.cancel(pendingIntent)
+            Log.d(TAG, "Cancelled all prayer alarms")
+        } catch (e: Exception) {
+            Log.e(TAG, "cancelAll crashed", e)
         }
-        Log.d(TAG, "Cancelled all prayer alarms")
     }
 
     /**

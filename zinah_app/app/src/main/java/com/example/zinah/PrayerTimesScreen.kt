@@ -972,6 +972,11 @@ private suspend fun refreshTimings(
     setError(null)
     val method = PrayerTimePreferences.CALCULATION_METHODS[methodIndex].first
 
+    // All Compose state updates (setTimings, setLoading, setError, setCityName) MUST happen
+    // on the main thread. We do the heavy work (network, GPS) on Dispatchers.IO and capture
+    // the result, then update state AFTER withContext returns to the main thread.
+    var newCityName: String? = null
+
     val result = try {
         withContext(Dispatchers.IO) {
             if (useGps) {
@@ -983,7 +988,8 @@ private suspend fun refreshTimings(
                 when (val loc = LocationHelper.getCurrentLocation(context)) {
                     is LocationHelper.Result.Success -> {
                         PrayerTimePreferences.saveLocation(context, loc.latitude, loc.longitude, loc.label)
-                        setCityName(loc.label)
+                        // Capture for later main-thread state update — DO NOT call setCityName here
+                        newCityName = loc.label
                         AdhanApiService.fetchTimingsByCoordinates(loc.latitude, loc.longitude, method)
                     }
                     is LocationHelper.Result.Error ->
@@ -1000,6 +1006,9 @@ private suspend fun refreshTimings(
         Log.e("PrayerTimesScreen", "refreshTimings crashed", e)
         AdhanApiService.Result.Error("حدث خطأ غير متوقع: ${e.message ?: "سبب غير معروف"}")
     }
+
+    // Now we're back on the main thread — safe to update Compose state
+    newCityName?.let { setCityName(it) }
 
     when (result) {
         is AdhanApiService.Result.Success -> {

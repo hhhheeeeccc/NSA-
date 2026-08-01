@@ -109,9 +109,21 @@ data class PrayerTimings(
             fun parseTime(key: String): Calendar {
                 // Aladhan sometimes appends "(EET)" or similar to times — strip everything after space.
                 val raw = timings.optString(key).substringBefore(" ").trim()
-                val date = fmt.parse(raw)
+                // fmt.parse may return null if raw is empty or malformed — fall back to a sane time
+                val date = try {
+                    fmt.parse(raw)
+                } catch (e: Exception) {
+                    null
+                }
                 val cal = anchorDay.clone() as Calendar
-                cal.timeInMillis = date.time
+                if (date != null) {
+                    cal.timeInMillis = date.time
+                } else {
+                    // Default to 12:00 if parsing fails — better than crashing
+                    cal.set(Calendar.HOUR_OF_DAY, 12)
+                    cal.set(Calendar.MINUTE, 0)
+                    cal.set(Calendar.SECOND, 0)
+                }
                 // Re-anchor to today's date (fmt.parse uses 1970-01-01)
                 val today = Calendar.getInstance()
                 cal.set(Calendar.YEAR, today.get(Calendar.YEAR))
