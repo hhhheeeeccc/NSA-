@@ -14,8 +14,11 @@ import androidx.core.app.NotificationCompat
 class DhikrAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        val wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ZinahApp::AlarmWakeLock")
-        wakeLock.acquire(10 * 1000L /*10 seconds*/)
+        val wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+            "ZinahApp::AlarmWakeLock"
+        )
+        wakeLock.acquire(60_000L)
 
         try {
             showNotification(context)
@@ -37,15 +40,34 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
             ).apply {
                 description = "قناة إشعارات تطبيق زينة"
                 enableVibration(true)
+                vibrationPattern = longArrayOf(0, 200, 100, 200, 100, 200)
+                lockscreenVisibility = 1
+                setBypassDnd(true)
                 setShowBadge(true)
             }
             notificationManager.createNotificationChannel(channel)
         }
 
-        val randomDhikr = AdhkarData.allAdhkar.random()
+        // Combine default adhkar + custom adhkar
+        val sharedPref = context.getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
+        val customList = getCustomAdhkar(sharedPref)
+        val allItems = mutableListOf<String>()
+        allItems.addAll(AdhkarData.allAdhkar)
+        allItems.addAll(customList)
+
+        val randomDhikr = if (allItems.isNotEmpty()) allItems.random() else "سبحان الله وبحمده"
+
+        // Open app intent
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        val openPendingIntent = PendingIntent.getActivity(
+            context, 0, openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
         val notification = NotificationCompat.Builder(context, channelId)
-            .setContentTitle("تذكير زينة")
+            .setContentTitle("زينة - تذكير بذكر الله")
             .setContentText(randomDhikr)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setStyle(NotificationCompat.BigTextStyle().bigText(randomDhikr))
@@ -54,6 +76,9 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
+            .setContentIntent(openPendingIntent)
+            .setVibrate(longArrayOf(0, 200, 100, 200, 100, 200))
+            .setLights(android.graphics.Color.GREEN, 1000, 500)
             .build()
 
         notificationManager.notify(System.currentTimeMillis().toInt(), notification)
@@ -61,7 +86,7 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
 
     private fun scheduleNextAlarm(context: Context) {
         val sharedPref = context.getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
-        val intervalMinutes = sharedPref.getLong("interval", 60L)
+        val intervalMinutes = sharedPref.getLong("interval", 15L)
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
         val intent = Intent(context, DhikrAlarmReceiver::class.java)

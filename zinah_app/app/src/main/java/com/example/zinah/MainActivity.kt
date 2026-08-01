@@ -51,7 +51,29 @@ class MainActivity : ComponentActivity() {
 
     private fun getSavedInterval(): Long {
         val sharedPref = getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
-        return sharedPref.getLong("interval", 60L) // Default to 60 minutes
+        return sharedPref.getLong("interval", 15L)
+    }
+
+    private fun getCustomAdhkar(): MutableList<String> {
+        val sharedPref = getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
+        val count = sharedPref.getInt("customAdhkarCount", 0)
+        val list = mutableListOf<String>()
+        for (i in 0 until count) {
+            val text = sharedPref.getString("customDhikr_$i", "") ?: ""
+            if (text.isNotEmpty()) list.add(text)
+        }
+        return list
+    }
+
+    private fun saveCustomAdhkar(list: List<String>) {
+        val sharedPref = getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
+        with(sharedPref.edit()) {
+            putInt("customAdhkarCount", list.size)
+            for (i in list.indices) {
+                putString("customDhikr_$i", list[i])
+            }
+            apply()
+        }
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -89,70 +111,328 @@ class MainActivity : ComponentActivity() {
                             )
                         )
 
-                        var selectedInterval by remember { mutableStateOf(getSavedInterval()) }
-                        var inputText by remember { mutableStateOf(getSavedInterval().toString()) }
-
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text("إعدادات التذكير التلقائي", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Text("الفاصل الحالي: كل $selectedInterval دقيقة", color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp))
-
-                                OutlinedTextField(
-                                    value = inputText,
-                                    onValueChange = { inputText = it },
-                                    label = { Text("أدخل الدقائق (أقل شيء 1 دقيقة)") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth(0.8f)
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                Button(onClick = {
-                                    val minutes = inputText.toLongOrNull()
-                                    if (minutes != null) {
-                                        if (minutes >= 1) {
-                                            selectedInterval = minutes
-                                            saveInterval(minutes)
-                                            scheduleExactDhikrAlarm(minutes)
-                                        } else {
-                                            Toast.makeText(this@MainActivity, "أقل مدة مسموحة هي 1 دقيقة", Toast.LENGTH_LONG).show()
-                                        }
-                                    } else {
-                                        Toast.makeText(this@MainActivity, "الرجاء إدخال رقم صحيح", Toast.LENGTH_SHORT).show()
-                                    }
-                                }) {
-                                    Text("تطبيق التعديل")
-                                }
-                            }
-                        }
-
-                        Text(
-                            "الأذكار والأدعية",
-                            modifier = Modifier.padding(16.dp),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
+                            // ===== Settings Card =====
+                            item {
+                                var selectedInterval by remember { mutableStateOf(getSavedInterval()) }
+                                var inputText by remember { mutableStateOf(getSavedInterval().toString()) }
+
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(16.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text("إعدادات التذكير التلقائي", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                        Spacer(modifier = Modifier.height(12.dp))
+
+                                        Text("اختيارات سريعة:", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color.Gray)
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        // Minute presets
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceEvenly
+                                        ) {
+                                            listOf(1L, 2L, 5L, 10L, 15L, 20L, 30L, 45L).forEach { mins ->
+                                                Button(
+                                                    onClick = {
+                                                        selectedInterval = mins
+                                                        inputText = mins.toString()
+                                                        saveInterval(mins)
+                                                        scheduleExactDhikrAlarm(mins)
+                                                    },
+                                                    modifier = Modifier.width(55.dp),
+                                                    contentPadding = PaddingValues(4.dp),
+                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF43A047))
+                                                ) {
+                                                    Text("${mins}د", fontSize = 11.sp)
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(6.dp))
+
+                                        // Hour presets
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceEvenly
+                                        ) {
+                                            listOf(1L, 2L, 3L, 6L, 12L).forEach { hours ->
+                                                Button(
+                                                    onClick = {
+                                                        val mins = hours * 60
+                                                        selectedInterval = mins
+                                                        inputText = mins.toString()
+                                                        saveInterval(mins)
+                                                        scheduleExactDhikrAlarm(mins)
+                                                    },
+                                                    modifier = Modifier.width(55.dp),
+                                                    contentPadding = PaddingValues(4.dp)
+                                                ) {
+                                                    Text("${hours}س", fontSize = 11.sp)
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Text("أو أدخل فاصل مخصص:", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color.Gray)
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        OutlinedTextField(
+                                            value = inputText,
+                                            onValueChange = { inputText = it },
+                                            label = { Text("أدخل الدقائق (أقل شيء 1 دقيقة)") },
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(0.8f)
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+
+                                        Button(onClick = {
+                                            val minutes = inputText.toLongOrNull()
+                                            if (minutes != null) {
+                                                if (minutes >= 1) {
+                                                    selectedInterval = minutes
+                                                    saveInterval(minutes)
+                                                    scheduleExactDhikrAlarm(minutes)
+                                                } else {
+                                                    Toast.makeText(this@MainActivity, "أقل مدة مسموحة هي 1 دقيقة", Toast.LENGTH_LONG).show()
+                                                }
+                                            } else {
+                                                Toast.makeText(this@MainActivity, "الرجاء إدخال رقم صحيح", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }) {
+                                            Text("تطبيق التعديل")
+                                        }
+
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Text(
+                                            "الفاصل الحالي: كل $selectedInterval دقيقة",
+                                            color = Color(0xFF2E7D32),
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+
+                            // ===== Stop Button =====
+                            item {
+                                Button(
+                                    onClick = {
+                                        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                                        val intent = Intent(this@MainActivity, DhikrAlarmReceiver::class.java)
+                                        val pendingIntent = PendingIntent.getBroadcast(
+                                            this@MainActivity,
+                                            0,
+                                            intent,
+                                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                                        )
+                                        alarmManager.cancel(pendingIntent)
+                                        Toast.makeText(this@MainActivity, "تم إيقاف التذكيرات", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
+                                ) {
+                                    Text("إيقاف التذكيرات", fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            // ===== CREATE CUSTOM DHIKR/DOA SECTION =====
+                            item {
+                                var newDhikrText by remember { mutableStateOf("") }
+                                var customList by remember { mutableStateOf(getCustomAdhkar()) }
+
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(16.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            "أضف ذكر أو دعاء خاص بك",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 18.sp,
+                                            color = Color(0xFF2E7D32)
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            "اكتب الذكر أو الدعاء اللي تبغاه وراح يوصلك كتذكير مع باقي الأذكار",
+                                            fontSize = 13.sp,
+                                            color = Color.Gray,
+                                            textAlign = TextAlign.Center
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+
+                                        OutlinedTextField(
+                                            value = newDhikrText,
+                                            onValueChange = { newDhikrText = it },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            placeholder = { Text("اكتب الذكر أو الدعاء هنا...") },
+                                            maxLines = 4,
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = Color(0xFF2E7D32)
+                                            )
+                                        )
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        Button(
+                                            onClick = {
+                                                if (newDhikrText.trim().isNotEmpty()) {
+                                                    customList = (customList + newDhikrText.trim()).toMutableList()
+                                                    saveCustomAdhkar(customList)
+                                                    newDhikrText = ""
+                                                    Toast.makeText(
+                                                        this@MainActivity,
+                                                        "تم إضافة الذكر/الدعاء بنجاح",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                } else {
+                                                    Toast.makeText(
+                                                        this@MainActivity,
+                                                        "اكتب ذكر أو دعاء أولاً",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text("إضافة الذكر/الدعاء", fontWeight = FontWeight.Bold)
+                                        }
+
+                                        // Show saved custom items
+                                        if (customList.isNotEmpty()) {
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            Text(
+                                                "أذكاري المخصصة (${customList.size}):",
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 14.sp,
+                                                color = Color.Gray
+                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+
+                                            customList.forEachIndexed { index, text ->
+                                                Card(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
+                                                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = text,
+                                                            modifier = Modifier.weight(1f),
+                                                            fontSize = 15.sp,
+                                                            textAlign = TextAlign.Center
+                                                        )
+                                                        IconButton(
+                                                            onClick = {
+                                                                customList = customList.toMutableList().apply { removeAt(index) }
+                                                                saveCustomAdhkar(customList)
+                                                                Toast.makeText(
+                                                                    this@MainActivity,
+                                                                    "تم حذف الذكر",
+                                                                    Toast.LENGTH_SHORT
+                                                                ).show()
+                                                            }
+                                                        ) {
+                                                            Text("✕", color = Color(0xFFD32F2F), fontSize = 14.sp)
+                                                        }
+                                                    }
+                                                }
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // ===== Adhkar count badge =====
+                            item {
+                                val customCount = getCustomAdhkar().size
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceEvenly
+                                    ) {
+                                        Text(
+                                            "أذكار وأدعية: ${AdhkarData.allAdhkar.size}",
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF2E7D32)
+                                        )
+                                        if (customCount > 0) {
+                                            Text(
+                                                "مخصصة: $customCount",
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF1565C0)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // ===== Adhkar list header =====
+                            item {
+                                Text(
+                                    "الأذكار والأدعية",
+                                    modifier = Modifier.padding(top = 8.dp),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 20.sp,
+                                    color = Color(0xFF2E7D32)
+                                )
+                            }
+
+                            // ===== Custom adhkar list =====
+                            val customItems = getCustomAdhkar()
+                            if (customItems.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        "أذكاري المخصصة:",
+                                        modifier = Modifier.padding(top = 8.dp),
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 16.sp,
+                                        color = Color(0xFF1565C0)
+                                    )
+                                }
+                                items(customItems) { text ->
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD)),
+                                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                                    ) {
+                                        Text(
+                                            text = text,
+                                            modifier = Modifier.padding(16.dp),
+                                            fontSize = 16.sp,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+
+                            // ===== Default Adhkar list =====
                             items(AdhkarData.allAdhkar) { dhikr ->
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                                 ) {
                                     Text(
                                         text = dhikr,
@@ -173,7 +453,6 @@ class MainActivity : ComponentActivity() {
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(this, DhikrAlarmReceiver::class.java)
 
-        // Cancel any existing alarm before scheduling a new one
         val pendingIntent = PendingIntent.getBroadcast(
             this,
             0,

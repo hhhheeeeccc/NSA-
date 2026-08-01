@@ -11,7 +11,7 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == "android.intent.action.QUICKBOOT_POWERON") {
             val sharedPref = context.getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
-            val intervalMinutes = sharedPref.getLong("interval", 60L) // Default to 60 mins
+            val intervalMinutes = sharedPref.getLong("interval", 15L) // Default to 15 mins
 
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             val alarmIntent = Intent(context, DhikrAlarmReceiver::class.java)
