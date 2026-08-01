@@ -33,6 +33,7 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
     private fun showNotification(context: Context) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channelId = "zinah_dhikr_channel_exact"
+        val sharedPref = context.getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
 
         val soundChoice = sharedPref.getInt("soundChoice", 0)
         val soundResId = when (soundChoice) {
@@ -68,7 +69,6 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
         }
 
         // Combine default adhkar + custom adhkar
-        val sharedPref = context.getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
         val customList = getCustomAdhkar(sharedPref)
         val allItems = mutableListOf<String>()
         allItems.addAll(AdhkarData.allAdhkar)
