@@ -73,11 +73,9 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
         val overlayIntent = Intent(context, DhikrOverlayService::class.java).apply {
             putExtra("dhikr_text", randomDhikr)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(overlayIntent)
-        } else {
-            context.startService(overlayIntent)
-        }
+        // We use startService instead of startForegroundService because it's a short-lived overlay
+        // and the app already has a main foreground service running.
+        context.startService(overlayIntent)
 
         // Also show a standard notification with the sound
         val openIntent = Intent(context, MainActivity::class.java).apply {
@@ -88,18 +86,24 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(context, channelId)
-            .setContentTitle("صلي على محمد")
-            .setContentText(randomDhikr)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setSound(soundUri)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setAutoCancel(true)
-            .setContentIntent(openPendingIntent)
-            .build()
-
-        notificationManager.notify(1001, notification)
+        // The user requested to remove the top notification and keep only the overlay.
+        // We play the sound manually using MediaPlayer.
+        try {
+            val mediaPlayer = MediaPlayer().apply {
+                setDataSource(context, soundUri)
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                prepare()
+                start()
+                setOnCompletionListener { release() }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun getCustomAdhkar(sharedPref: android.content.SharedPreferences): List<String> {
