@@ -63,39 +63,59 @@ class BootReceiver : BroadcastReceiver() {
     /**
      * Fetches fresh prayer timings from Aladhan API and re-schedules all 5 alarms.
      * Called after device boot — must be fast and silent (no UI).
+     *
+     * Safety: wrapped in try/catch so any failure (no Play Services, no GPS, no network)
+     * does NOT crash the boot receiver (which would put the app in a crash loop).
      */
     private suspend fun reSchedulePrayerTimes(context: Context) {
-        val method = PrayerTimePreferences.getCalculationMethod(context)
-        val useGps = !PrayerTimePreferences.useManualCity(context)
-        val manualCity = PrayerTimePreferences.getManualCity(context)
+        try {
+            val method = PrayerTimePreferences.getCalculationMethod(context)
+            val useGps = !PrayerTimePreferences.useManualCity(context)
+            val manualCity = PrayerTimePreferences.getManualCity(context)
 
-        val result = if (useGps) {
-            if (!LocationHelper.hasLocationPermission(context)) {
-                Log.w(TAG, "No location permission after boot — skipping prayer reschedule")
-                return
-            }
-            when (val loc = LocationHelper.getCurrentLocation(context)) {
-                is LocationHelper.Result.Success -> {
-                    PrayerTimePreferences.saveLocation(context, loc.latitude, loc.longitude, loc.label)
-                    AdhanApiService.fetchTimingsByCoordinates(loc.latitude, loc.longitude, method)
-                }
-                is LocationHelper.Result.Error -> {
-                    Log.w(TAG, "Location fetch failed after boot: ${loc.message}")
+            val result = if (useGps) {
+                if (!LocationHelper.hasLocationPermission(context)) {
+                    Log.w(TAG, "No location permission after boot — skipping prayer reschedule")
                     return
                 }
+                when (val loc = LocationHelper.getCurrentLocation(context)) {
+                    is LocationHelper.Result.Success -> {
+                        PrayerTimePreferences.saveLocation(context, loc.latitude, loc.longitude, loc.label)
+                        AdhanApiService.fetchTimingsByCoordinates(loc.latitude, loc.longitude, method)
+                    }
+                    is LocationHelper.Result.Error -> {
+                        Log.w(TAG, "Location fetch failed after boot: ${loc.message}")
+                        // Fallback: try with last cached coordinates
+                        val cachedLat = PrayerTimePreferences.getLatitude(context)
+                        val cachedLon = PrayerTimePreferences.getLongitude(context)
+                        if (cachedLat != 0.0 && cachedLon != 0.0) {
+                            Log.d(TAG, "Using cached location: $cachedLat, $cachedLon")
+                            AdhanApiService.fetchTimingsByCoordinates(cachedLat, cachedLon, method)
+                        } else {
+                            return
+                        }
+                    }
+                }
+            } else {
+                AdhanApiService.fetchTimingsByCity(manualCity, method)
             }
-        } else {
-            AdhanApiService.fetchTimingsByCity(manualCity, method)
-        }
 
-        when (result) {
-            is AdhanApiService.Result.Success -> {
-                PrayerTimeScheduler.scheduleAll(context, result.data)
-                Log.d(TAG, "Prayer times re-scheduled after boot")
+            when (result) {
+                is AdhanApiService.Result.Success -> {
+                    try {
+                        PrayerTimeScheduler.scheduleAll(context, result.data)
+                        Log.d(TAG, "Prayer times re-scheduled after boot")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "scheduleAll failed after boot", e)
+                    }
+                }
+                is AdhanApiService.Result.Error -> {
+                    Log.e(TAG, "Failed to fetch prayer times after boot: ${result.message}")
+                }
             }
-            is AdhanApiService.Result.Error -> {
-                Log.e(TAG, "Failed to fetch prayer times after boot: ${result.message}")
-            }
+        } catch (e: Throwable) {
+            // Never let a boot receiver crash — it would prevent the app from starting
+            Log.e(TAG, "reSchedulePrayerTimes crashed", e)
         }
     }
 }

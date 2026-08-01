@@ -3,6 +3,7 @@ package com.example.zinah
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -103,11 +104,24 @@ fun PrayerTimesScreen() {
     }
 
     LaunchedEffect(Unit) {
-        refreshTimings(context, useGps, manualCity, methodIndex,
-            setTimings = { timings = it },
-            setLoading = { isLoading = it },
-            setError = { errorMessage = it },
-            setCityName = { cityName = it })
+        // On first launch: do NOT auto-trigger GPS (would crash if permission not granted yet).
+        // If a manual city is saved, use it. Otherwise just show empty state and let the
+        // user tap "Refresh" to grant permission / pick a city.
+        if (!useGps) {
+            refreshTimings(context, useGps, manualCity, methodIndex,
+                setTimings = { timings = it },
+                setLoading = { isLoading = it },
+                setError = { errorMessage = it },
+                setCityName = { cityName = it })
+        } else if (LocationHelper.hasLocationPermission(context)) {
+            // Only auto-trigger GPS if permission is ALREADY granted (user has used the app before)
+            refreshTimings(context, useGps, manualCity, methodIndex,
+                setTimings = { timings = it },
+                setLoading = { isLoading = it },
+                setError = { errorMessage = it },
+                setCityName = { cityName = it })
+        }
+        // Otherwise: do nothing — wait for the user to tap the refresh button.
     }
 
     ZinahTheme {
@@ -1011,32 +1025,44 @@ private suspend fun refreshTimings(
     setError(null)
     val method = PrayerTimePreferences.CALCULATION_METHODS[methodIndex].first
 
-    val result = withContext(Dispatchers.IO) {
-        if (useGps) {
-            if (!LocationHelper.hasLocationPermission(context)) {
-                return@withContext AdhanApiService.Result.Error("إذن الموقع غير ممنوح — اختر مدينة يدويًا")
-            }
-            when (val loc = LocationHelper.getCurrentLocation(context)) {
-                is LocationHelper.Result.Success -> {
-                    PrayerTimePreferences.saveLocation(context, loc.latitude, loc.longitude, loc.label)
-                    setCityName(loc.label)
-                    AdhanApiService.fetchTimingsByCoordinates(loc.latitude, loc.longitude, method)
+    val result = try {
+        withContext(Dispatchers.IO) {
+            if (useGps) {
+                if (!LocationHelper.hasLocationPermission(context)) {
+                    return@withContext AdhanApiService.Result.Error(
+                        "إذن الموقع غير ممنوح — اضغط زر التحديث وامنح الإذن، أو اختر مدينة يدويًا"
+                    )
                 }
-                is LocationHelper.Result.Error ->
-                    AdhanApiService.Result.Error(loc.message)
+                when (val loc = LocationHelper.getCurrentLocation(context)) {
+                    is LocationHelper.Result.Success -> {
+                        PrayerTimePreferences.saveLocation(context, loc.latitude, loc.longitude, loc.label)
+                        setCityName(loc.label)
+                        AdhanApiService.fetchTimingsByCoordinates(loc.latitude, loc.longitude, method)
+                    }
+                    is LocationHelper.Result.Error ->
+                        AdhanApiService.Result.Error(loc.message)
+                }
+            } else {
+                if (manualCity.isBlank()) {
+                    return@withContext AdhanApiService.Result.Error("أدخل اسم المدينة بصيغة: المدينة,الدولة")
+                }
+                AdhanApiService.fetchTimingsByCity(manualCity, method)
             }
-        } else {
-            if (manualCity.isBlank()) {
-                return@withContext AdhanApiService.Result.Error("أدخل اسم المدينة")
-            }
-            AdhanApiService.fetchTimingsByCity(manualCity, method)
         }
+    } catch (e: Throwable) {
+        // Last-resort safety net — never let this function throw
+        Log.e("PrayerTimesScreen", "refreshTimings crashed", e)
+        AdhanApiService.Result.Error("حدث خطأ غير متوقع: ${e.message ?: "سبب غير معروف"}")
     }
 
     when (result) {
         is AdhanApiService.Result.Success -> {
             setTimings(result.data)
-            PrayerTimeScheduler.scheduleAll(context, result.data)
+            try {
+                PrayerTimeScheduler.scheduleAll(context, result.data)
+            } catch (e: Exception) {
+                Log.e("PrayerTimesScreen", "scheduleAll failed", e)
+            }
             setError(null)
         }
         is AdhanApiService.Result.Error -> {
