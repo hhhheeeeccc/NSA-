@@ -9,7 +9,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -17,7 +16,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -32,6 +30,8 @@ import java.util.Calendar
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
+private const val TAG = "PrayerScreen"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PrayerTimesScreen() {
@@ -39,33 +39,28 @@ fun PrayerTimesScreen() {
     val scope = rememberCoroutineScope()
 
     var featureEnabled by remember {
-        mutableStateOf(PrayerTimePreferences.isFeatureEnabled(context))
+        mutableStateOf(safeGetFeatureEnabled(context))
     }
-    var useGps by remember { mutableStateOf(!PrayerTimePreferences.useManualCity(context)) }
-    var manualCity by remember { mutableStateOf(PrayerTimePreferences.getManualCity(context)) }
-    var cityName by remember { mutableStateOf(PrayerTimePreferences.getCityName(context)) }
-    var methodIndex by remember {
-        mutableStateOf(PrayerTimePreferences.CALCULATION_METHODS.indexOfFirst {
-            it.first == PrayerTimePreferences.getCalculationMethod(context)
-        }.coerceAtLeast(0))
-    }
-    var adhanSoundIndex by remember {
-        mutableStateOf(PrayerTimePreferences.getAdhanSoundIndex(context))
-    }
-    var fullScreen by remember { mutableStateOf(PrayerTimePreferences.isFullScreenAdhan(context)) }
+    var useGps by remember { mutableStateOf(!safeGetUseManualCity(context)) }
+    var manualCity by remember { mutableStateOf(safeGetManualCity(context)) }
+    var cityName by remember { mutableStateOf(safeGetCityName(context)) }
+    var methodIndex by remember { mutableStateOf(safeGetMethodIndex(context)) }
+    var adhanSoundIndex by remember { mutableStateOf(safeGetAdhanSound(context)) }
+    var fullScreen by remember { mutableStateOf(safeGetFullScreen(context)) }
     var timings by remember { mutableStateOf<PrayerTimings?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showMethodDropdown by remember { mutableStateOf(false) }
-    var nowTick by remember { mutableStateOf(System.currentTimeMillis()) }
 
-    // Refresh the countdown every 30 seconds
+    // Update countdown every 30 seconds
+    var nowTick by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
             try {
                 kotlinx.coroutines.delay(30_000L)
                 nowTick = System.currentTimeMillis()
             } catch (e: Exception) {
+                Log.w(TAG, "tick loop interrupted", e)
                 break
             }
         }
@@ -75,36 +70,8 @@ fun PrayerTimesScreen() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
         if (results.values.any { it }) {
-            scope.launch {
-                refreshTimings(
-                    context, useGps, manualCity, methodIndex,
-                    setTimings = { timings = it },
-                    setLoading = { isLoading = it },
-                    setError = { errorMessage = it },
-                    setCityName = { cityName = it }
-                )
-            }
-        }
-    }
-
-    // Auto-load on first launch ONLY if we have a saved manual city or already-granted GPS permission
-    LaunchedEffect(Unit) {
-        if (!useGps && manualCity.isNotBlank()) {
-            refreshTimings(
-                context, useGps, manualCity, methodIndex,
-                setTimings = { timings = it },
-                setLoading = { isLoading = it },
-                setError = { errorMessage = it },
-                setCityName = { cityName = it }
-            )
-        } else if (useGps && LocationHelper.hasLocationPermission(context)) {
-            refreshTimings(
-                context, useGps, manualCity, methodIndex,
-                setTimings = { timings = it },
-                setLoading = { isLoading = it },
-                setError = { errorMessage = it },
-                setCityName = { cityName = it }
-            )
+            scope.launch { doRefresh(context, useGps, manualCity, methodIndex,
+                { timings = it }, { isLoading = it }, { errorMessage = it }, { cityName = it }) }
         }
     }
 
@@ -117,13 +84,13 @@ fun PrayerTimesScreen() {
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // ===== Master toggle + countdown =====
+            // ===== Master toggle =====
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1B5E20)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    elevation = CardDefaults.cardElevation(4.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(20.dp),
@@ -134,30 +101,30 @@ fun PrayerTimesScreen() {
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                "مواقيت الصلاة",
+                            Text("مواقيت الصلاة",
                                 color = Color(0xFFFFD700),
                                 fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                                fontWeight = FontWeight.Bold)
                             Switch(
                                 checked = featureEnabled,
                                 onCheckedChange = { newValue ->
-                                    featureEnabled = newValue
-                                    PrayerTimePreferences.setFeatureEnabled(context, newValue)
-                                    if (newValue) {
-                                        scope.launch {
-                        refreshTimings(
-                            context, useGps, manualCity, methodIndex,
-                            setTimings = { timings = it },
-                            setLoading = { isLoading = it },
-                            setError = { errorMessage = it },
-                            setCityName = { cityName = it }
-                        )
-                    }
-                                    } else {
-                                        PrayerTimeScheduler.cancelAll(context)
-                                        timings = null
+                                    try {
+                                        featureEnabled = newValue
+                                        PrayerTimePreferences.setFeatureEnabled(context, newValue)
+                                        if (newValue) {
+                                            scope.launch {
+                                                doRefresh(context, useGps, manualCity, methodIndex,
+                                                    { timings = it }, { isLoading = it },
+                                                    { errorMessage = it }, { cityName = it })
+                                            }
+                                        } else {
+                                            try { PrayerTimeScheduler.cancelAll(context) } catch (e: Exception) {
+                                                Log.e(TAG, "cancelAll failed", e) }
+                                            timings = null
+                                        }
+                                    } catch (e: Throwable) {
+                                        Log.e(TAG, "toggle failed", e)
+                                        errorMessage = "خطأ: ${e.message}"
                                     }
                                 },
                                 colors = SwitchDefaults.colors(
@@ -169,182 +136,155 @@ fun PrayerTimesScreen() {
                             )
                         }
                         Spacer(modifier = Modifier.height(16.dp))
-
                         if (featureEnabled) {
+                            // Compute values outside of try (no Compose calls inside try)
                             val now = Calendar.getInstance().apply { timeInMillis = nowTick }
-                            val next = timings?.nextPrayer(now)
+                            val next = try { timings?.nextPrayer(now) } catch (e: Throwable) { null }
                             if (next != null) {
                                 val (prayer, cal) = next
                                 Text("الصلاة القادمة", color = Color(0xFFFFD700), fontSize = 13.sp)
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    prayer.nameAr,
-                                    color = Color.White,
-                                    fontSize = 32.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    safeFormatTime(cal),
-                                    color = Color(0xFFFFD700),
-                                    fontSize = 20.sp
-                                )
+                                Text(prayer.nameAr, color = Color.White, fontSize = 32.sp,
+                                    fontWeight = FontWeight.Bold)
+                                Text(safeFormatTime(cal), color = Color(0xFFFFD700), fontSize = 20.sp)
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    "بعد ${safeFormatRemaining(now, cal)}",
-                                    color = Color.White,
-                                    fontSize = 14.sp
-                                )
+                                Text("بعد ${safeFormatRemaining(now, cal)}",
+                                    color = Color.White, fontSize = 14.sp)
                             } else if (isLoading) {
                                 Text("جارٍ التحميل...", color = Color.White, fontSize = 16.sp)
                             } else {
-                                Text(
-                                    "اضغط زر التحديث لجلب المواقيت",
-                                    color = Color.White,
-                                    fontSize = 14.sp,
-                                    textAlign = TextAlign.Center
-                                )
+                                Text("اضغط زر التحديث لجلب المواقيت",
+                                    color = Color.White, fontSize = 14.sp,
+                                    textAlign = TextAlign.Center)
                             }
                             Spacer(modifier = Modifier.height(12.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Filled.LocationOn,
-                                    contentDescription = null,
-                                    tint = Color(0xFFFFD700),
-                                    modifier = Modifier.size(14.dp)
-                                )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.LocationOn, contentDescription = null,
+                                    tint = Color(0xFFFFD700), modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(cityName, color = Color.White, fontSize = 12.sp)
                             }
                         } else {
-                            Text(
-                                "فعّل المفتاح لبدء استقبال الأذان",
+                            Text("فعّل المفتاح لبدء استقبال الأذان",
                                 color = Color.White.copy(alpha = 0.8f),
-                                fontSize = 14.sp,
-                                textAlign = TextAlign.Center
-                            )
+                                fontSize = 14.sp, textAlign = TextAlign.Center)
                         }
                     }
                 }
             }
 
             // ===== Location card =====
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.LocationOn, contentDescription = null,
-                                tint = Color(0xFF2E7D32), modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(cityName, fontWeight = FontWeight.Bold, fontSize = 15.sp,
-                                modifier = Modifier.weight(1f))
-                            IconButton(onClick = {
-                                if (useGps) {
-                                    val perms = arrayOf(
-                                        Manifest.permission.ACCESS_FINE_LOCATION,
-                                        Manifest.permission.ACCESS_COARSE_LOCATION
-                                    )
-                                    if (LocationHelper.hasLocationPermission(context)) {
-                                        scope.launch {
-                        refreshTimings(
-                            context, useGps, manualCity, methodIndex,
-                            setTimings = { timings = it },
-                            setLoading = { isLoading = it },
-                            setError = { errorMessage = it },
-                            setCityName = { cityName = it }
-                        )
-                    }
-                                    } else {
-                                        locationPermissionLauncher.launch(perms)
+            if (featureEnabled) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        elevation = CardDefaults.cardElevation(2.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.LocationOn, contentDescription = null,
+                                    tint = Color(0xFF2E7D32), modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(cityName, fontWeight = FontWeight.Bold, fontSize = 15.sp,
+                                    modifier = Modifier.weight(1f))
+                                IconButton(onClick = {
+                                    try {
+                                        if (useGps) {
+                                            val perms = arrayOf(
+                                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                                Manifest.permission.ACCESS_COARSE_LOCATION
+                                            )
+                                            if (LocationHelper.hasLocationPermission(context)) {
+                                                scope.launch { doRefresh(context, useGps, manualCity,
+                                                    methodIndex, { timings = it }, { isLoading = it },
+                                                    { errorMessage = it }, { cityName = it }) }
+                                            } else {
+                                                locationPermissionLauncher.launch(perms)
+                                            }
+                                        } else {
+                                            scope.launch { doRefresh(context, useGps, manualCity,
+                                                methodIndex, { timings = it }, { isLoading = it },
+                                                { errorMessage = it }, { cityName = it }) }
+                                        }
+                                    } catch (e: Throwable) {
+                                        Log.e(TAG, "refresh click failed", e)
+                                        errorMessage = "خطأ: ${e.message}"
                                     }
-                                } else {
-                                    scope.launch {
-                        refreshTimings(
-                            context, useGps, manualCity, methodIndex,
-                            setTimings = { timings = it },
-                            setLoading = { isLoading = it },
-                            setError = { errorMessage = it },
-                            setCityName = { cityName = it }
-                        )
-                    }
+                                }) {
+                                    Icon(Icons.Filled.Refresh, contentDescription = "تحديث")
                                 }
-                            }) {
-                                Icon(Icons.Filled.Refresh, contentDescription = "تحديث")
                             }
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(
-                                onClick = {
-                                    useGps = true
-                                    PrayerTimePreferences.setUseManualCity(context, false)
-                                    val perms = arrayOf(
-                                        Manifest.permission.ACCESS_FINE_LOCATION,
-                                        Manifest.permission.ACCESS_COARSE_LOCATION
-                                    )
-                                    if (LocationHelper.hasLocationPermission(context)) {
-                                        scope.launch {
-                        refreshTimings(
-                            context, useGps, manualCity, methodIndex,
-                            setTimings = { timings = it },
-                            setLoading = { isLoading = it },
-                            setError = { errorMessage = it },
-                            setCityName = { cityName = it }
-                        )
-                    }
-                                    } else {
-                                        locationPermissionLauncher.launch(perms)
-                                    }
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (useGps) Color(0xFF2E7D32) else Color(0xFFE8F5E9),
-                                    contentColor = if (useGps) Color.White else Color(0xFF2E7D32)
-                                )
-                            ) { Text("GPS", fontSize = 12.sp) }
-                            Button(
-                                onClick = {
-                                    useGps = false
-                                    PrayerTimePreferences.setUseManualCity(context, true)
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (!useGps) Color(0xFF2E7D32) else Color(0xFFE8F5E9),
-                                    contentColor = if (!useGps) Color.White else Color(0xFF2E7D32)
-                                )
-                            ) { Text("يدوي", fontSize = 12.sp) }
-                        }
-                        if (!useGps) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedTextField(
-                                value = manualCity,
-                                onValueChange = { manualCity = it },
-                                label = { Text("المدينة,الدولة") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                                trailingIcon = {
-                                    TextButton(onClick = {
-                                        PrayerTimePreferences.setManualCity(context, manualCity)
-                                        scope.launch {
-                        refreshTimings(
-                            context, useGps, manualCity, methodIndex,
-                            setTimings = { timings = it },
-                            setLoading = { isLoading = it },
-                            setError = { errorMessage = it },
-                            setCityName = { cityName = it }
-                        )
-                    }
-                                    }) { Text("حفظ") }
-                                }
-                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = {
+                                        try {
+                                            useGps = true
+                                            PrayerTimePreferences.setUseManualCity(context, false)
+                                            val perms = arrayOf(
+                                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                                Manifest.permission.ACCESS_COARSE_LOCATION
+                                            )
+                                            if (LocationHelper.hasLocationPermission(context)) {
+                                                scope.launch { doRefresh(context, useGps, manualCity,
+                                                    methodIndex, { timings = it }, { isLoading = it },
+                                                    { errorMessage = it }, { cityName = it }) }
+                                            } else {
+                                                locationPermissionLauncher.launch(perms)
+                                            }
+                                        } catch (e: Throwable) {
+                                            Log.e(TAG, "GPS toggle failed", e)
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (useGps) Color(0xFF2E7D32) else Color(0xFFE8F5E9),
+                                        contentColor = if (useGps) Color.White else Color(0xFF2E7D32)
+                                    )
+                                ) { Text("GPS", fontSize = 12.sp) }
+                                Button(
+                                    onClick = {
+                                        try {
+                                            useGps = false
+                                            PrayerTimePreferences.setUseManualCity(context, true)
+                                        } catch (e: Throwable) {
+                                            Log.e(TAG, "manual toggle failed", e)
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (!useGps) Color(0xFF2E7D32) else Color(0xFFE8F5E9),
+                                        contentColor = if (!useGps) Color.White else Color(0xFF2E7D32)
+                                    )
+                                ) { Text("يدوي", fontSize = 12.sp) }
+                            }
+                            if (!useGps) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = manualCity,
+                                    onValueChange = { manualCity = it },
+                                    label = { Text("المدينة,الدولة") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    trailingIcon = {
+                                        TextButton(onClick = {
+                                            try {
+                                                PrayerTimePreferences.setManualCity(context, manualCity)
+                                                scope.launch { doRefresh(context, useGps, manualCity,
+                                                    methodIndex, { timings = it }, { isLoading = it },
+                                                    { errorMessage = it }, { cityName = it }) }
+                                            } catch (e: Throwable) {
+                                                Log.e(TAG, "save city failed", e)
+                                                errorMessage = "خطأ: ${e.message}"
+                                            }
+                                        }) { Text("حفظ") }
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -354,19 +294,15 @@ fun PrayerTimesScreen() {
             val t = timings
             if (t != null && featureEnabled) {
                 item {
-                    Text(
-                        "مواقيت اليوم",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1B5E20)
-                    )
+                    Text("مواقيت اليوم", fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1B5E20))
                 }
                 val now = Calendar.getInstance().apply { timeInMillis = nowTick }
                 val nextPrayer = try { t.nextPrayer(now).first } catch (e: Exception) { null }
                 items(PrayerType.entries.toList()) { prayer ->
                     val cal = try { t.timeFor(prayer) } catch (e: Exception) { null }
                     val isNext = prayer == nextPrayer
-                    val enabled = PrayerTimePreferences.isPrayerEnabled(context, prayer)
+                    val enabled = safeGetPrayerEnabled(context, prayer)
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
@@ -379,37 +315,35 @@ fun PrayerTimesScreen() {
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                prayer.nameAr,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
+                            Text(prayer.nameAr, fontSize = 18.sp, fontWeight = FontWeight.Bold,
                                 color = if (isNext) Color.White else Color(0xFF1B1B1B),
-                                modifier = Modifier.weight(1f)
-                            )
-                            Text(
-                                if (cal != null) safeFormatTime(cal) else "--:--",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isNext) Color(0xFFFFD700) else Color(0xFF1B5E20)
-                            )
+                                modifier = Modifier.weight(1f))
+                            Text(if (cal != null) safeFormatTime(cal) else "--:--",
+                                fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                                color = if (isNext) Color(0xFFFFD700) else Color(0xFF1B5E20))
                             Spacer(modifier = Modifier.width(12.dp))
                             Switch(
                                 checked = enabled,
                                 onCheckedChange = { newValue ->
-                                    PrayerTimePreferences.setPrayerEnabled(context, prayer, newValue)
-                                    if (featureEnabled && newValue && cal != null) {
-                                        try {
-                                            if (cal.timeInMillis > System.currentTimeMillis()) {
-                                                PrayerTimeScheduler.scheduleOne(
-                                                    context, prayer, cal.timeInMillis
-                                                )
+                                    try {
+                                        PrayerTimePreferences.setPrayerEnabled(context, prayer, newValue)
+                                        if (featureEnabled && newValue && cal != null) {
+                                            try {
+                                                if (cal.timeInMillis > System.currentTimeMillis()) {
+                                                    PrayerTimeScheduler.scheduleOne(
+                                                        context, prayer, cal.timeInMillis
+                                                    )
+                                                }
+                                            } catch (e: Exception) {
+                                                Log.e(TAG, "scheduleOne failed", e)
                                             }
-                                        } catch (e: Exception) {
-                                            Log.e("PrayerTimes", "scheduleOne failed", e)
+                                        } else if (!newValue) {
+                                            try { cancelPrayerAlarm(context, prayer) }
+                                            catch (e: Exception) {
+                                                Log.e(TAG, "cancel alarm failed", e) }
                                         }
-                                    } else if (!newValue) {
-                                        try { cancelPrayerAlarm(context, prayer) }
-                                        catch (e: Exception) {}
+                                    } catch (e: Throwable) {
+                                        Log.e(TAG, "prayer toggle failed", e)
                                     }
                                 },
                                 colors = SwitchDefaults.colors(
@@ -436,7 +370,7 @@ fun PrayerTimesScreen() {
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = Color.White),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        elevation = CardDefaults.cardElevation(2.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text("طريقة الحساب", fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -447,8 +381,8 @@ fun PrayerTimesScreen() {
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(10.dp)
                                 ) {
-                                    Text(PrayerTimePreferences.CALCULATION_METHODS[methodIndex].second,
-                                        modifier = Modifier.weight(1f), fontSize = 12.sp)
+                                    Text(PrayerTimePreferences.CALCULATION_METHODS.getOrNull(methodIndex)?.second
+                                        ?: "—", modifier = Modifier.weight(1f), fontSize = 12.sp)
                                     Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
                                 }
                                 DropdownMenu(
@@ -459,18 +393,16 @@ fun PrayerTimesScreen() {
                                         DropdownMenuItem(
                                             text = { Text(pair.second, fontSize = 13.sp) },
                                             onClick = {
-                                                methodIndex = idx
-                                                PrayerTimePreferences.setCalculationMethod(context, pair.first)
-                                                showMethodDropdown = false
-                                                scope.launch {
-                        refreshTimings(
-                            context, useGps, manualCity, methodIndex,
-                            setTimings = { timings = it },
-                            setLoading = { isLoading = it },
-                            setError = { errorMessage = it },
-                            setCityName = { cityName = it }
-                        )
-                    }
+                                                try {
+                                                    methodIndex = idx
+                                                    PrayerTimePreferences.setCalculationMethod(context, pair.first)
+                                                    showMethodDropdown = false
+                                                    scope.launch { doRefresh(context, useGps, manualCity,
+                                                        methodIndex, { timings = it }, { isLoading = it },
+                                                        { errorMessage = it }, { cityName = it }) }
+                                                } catch (e: Throwable) {
+                                                    Log.e(TAG, "method change failed", e)
+                                                }
                                             }
                                         )
                                     }
@@ -483,8 +415,12 @@ fun PrayerTimesScreen() {
                                 listOf("مكة" to 0, "المدينة" to 1, "قصير" to 2).forEach { (label, idx) ->
                                     Button(
                                         onClick = {
-                                            adhanSoundIndex = idx
-                                            PrayerTimePreferences.setAdhanSoundIndex(context, idx)
+                                            try {
+                                                adhanSoundIndex = idx
+                                                PrayerTimePreferences.setAdhanSoundIndex(context, idx)
+                                            } catch (e: Throwable) {
+                                                Log.e(TAG, "sound change failed", e)
+                                            }
                                         },
                                         modifier = Modifier.weight(1f),
                                         shape = RoundedCornerShape(10.dp),
@@ -508,8 +444,12 @@ fun PrayerTimesScreen() {
                                 Switch(
                                     checked = fullScreen,
                                     onCheckedChange = {
-                                        fullScreen = it
-                                        PrayerTimePreferences.setFullScreenAdhan(context, it)
+                                        try {
+                                            fullScreen = it
+                                            PrayerTimePreferences.setFullScreenAdhan(context, it)
+                                        } catch (e: Throwable) {
+                                            Log.e(TAG, "fullscreen toggle failed", e)
+                                        }
                                     },
                                     colors = SwitchDefaults.colors(
                                         checkedThumbColor = Color.White,
@@ -522,7 +462,7 @@ fun PrayerTimesScreen() {
                 }
             }
 
-            // ===== Error message + action button =====
+            // ===== Error =====
             if (errorMessage != null) {
                 item {
                     Card(
@@ -531,13 +471,8 @@ fun PrayerTimesScreen() {
                         colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE))
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                errorMessage!!,
-                                color = Color(0xFFB71C1C),
-                                fontSize = 13.sp
-                            )
+                            Text(errorMessage ?: "", color = Color(0xFFB71C1C), fontSize = 13.sp)
                             Spacer(modifier = Modifier.height(12.dp))
-                            // Button to open location settings
                             OutlinedButton(
                                 onClick = {
                                     try {
@@ -548,12 +483,12 @@ fun PrayerTimesScreen() {
                                         }
                                         context.startActivity(intent)
                                     } catch (e: Exception) {
-                                        // Fallback: open app settings
                                         try {
                                             val intent = android.content.Intent(
                                                 android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS
                                             ).apply {
-                                                data = android.net.Uri.fromParts("package", context.packageName, null)
+                                                data = android.net.Uri.fromParts("package",
+                                                    context.packageName, null)
                                                 addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                                             }
                                             context.startActivity(intent)
@@ -595,28 +530,63 @@ fun PrayerTimesScreen() {
     }
 }
 
-// ===== Helper functions — all wrapped in try/catch =====
+// ===== Safe wrappers for SharedPreferences — never throw =====
 
-private fun safeFormatTime(cal: java.util.Calendar): String {
-    return try {
-        val fmt = SimpleDateFormat("hh:mm a", Locale.US)
-        fmt.format(cal.time)
-    } catch (e: Exception) {
-        "--:--"
-    }
-}
+private fun safeGetFeatureEnabled(context: Context): Boolean = try {
+    PrayerTimePreferences.isFeatureEnabled(context)
+} catch (e: Throwable) { false }
+
+private fun safeGetUseManualCity(context: Context): Boolean = try {
+    PrayerTimePreferences.useManualCity(context)
+} catch (e: Throwable) { false }
+
+private fun safeGetManualCity(context: Context): String = try {
+    PrayerTimePreferences.getManualCity(context)
+} catch (e: Throwable) { "Makkah,Saudi Arabia" }
+
+private fun safeGetCityName(context: Context): String = try {
+    PrayerTimePreferences.getCityName(context)
+} catch (e: Throwable) { "—" }
+
+private fun safeGetMethodIndex(context: Context): Int = try {
+    PrayerTimePreferences.CALCULATION_METHODS.indexOfFirst {
+        it.first == PrayerTimePreferences.getCalculationMethod(context)
+    }.coerceAtLeast(0)
+} catch (e: Throwable) { 1 }
+
+private fun safeGetAdhanSound(context: Context): Int = try {
+    PrayerTimePreferences.getAdhanSoundIndex(context)
+} catch (e: Throwable) { 0 }
+
+private fun safeGetFullScreen(context: Context): Boolean = try {
+    PrayerTimePreferences.isFullScreenAdhan(context)
+} catch (e: Throwable) { true }
+
+private fun safeGetPrayerEnabled(context: Context, prayer: PrayerType): Boolean = try {
+    PrayerTimePreferences.isPrayerEnabled(context, prayer)
+} catch (e: Throwable) { true }
+
+// ===== Safe formatters — never throw =====
+
+private fun safeFormatTime(cal: java.util.Calendar): String = try {
+    val fmt = SimpleDateFormat("hh:mm a", Locale.US)
+    fmt.format(cal.time)
+} catch (e: Exception) { "--:--" }
 
 private fun safeFormatRemaining(now: java.util.Calendar, target: java.util.Calendar): String {
     return try {
         val diff = target.timeInMillis - now.timeInMillis
-        if (diff <= 0) return "الآن"
-        val hours = TimeUnit.MILLISECONDS.toHours(diff)
-        val mins = TimeUnit.MILLISECONDS.toMinutes(diff) % 60
-        when {
-            hours > 0 && mins > 0 -> "$hours ساعة و $mins دقيقة"
-            hours > 0 -> "$hours ساعة"
-            mins > 0 -> "$mins دقيقة"
-            else -> "الآن"
+        if (diff <= 0) {
+            "الآن"
+        } else {
+            val hours = TimeUnit.MILLISECONDS.toHours(diff)
+            val mins = TimeUnit.MILLISECONDS.toMinutes(diff) % 60
+            when {
+                hours > 0 && mins > 0 -> "$hours ساعة و $mins دقيقة"
+                hours > 0 -> "$hours ساعة"
+                mins > 0 -> "$mins دقيقة"
+                else -> "الآن"
+            }
         }
     } catch (e: Exception) {
         "قريبًا"
@@ -637,7 +607,9 @@ private fun cancelPrayerAlarm(context: Context, prayer: PrayerType) {
     am.cancel(pi)
 }
 
-private suspend fun refreshTimings(
+// ===== Main refresh function — bullet-proof with try/catch everywhere =====
+
+private suspend fun doRefresh(
     context: Context,
     useGps: Boolean,
     manualCity: String,
@@ -647,62 +619,77 @@ private suspend fun refreshTimings(
     setError: (String?) -> Unit,
     setCityName: (String) -> Unit
 ) {
-    if (!PrayerTimePreferences.isFeatureEnabled(context)) {
-        setError(null)
-        return
-    }
-    setLoading(true)
-    setError(null)
-    val method = PrayerTimePreferences.CALCULATION_METHODS[methodIndex].first
-
-    var newCityName: String? = null
-
-    val result = try {
-        withContext(Dispatchers.IO) {
-            if (useGps) {
-                if (!LocationHelper.hasLocationPermission(context)) {
-                    return@withContext AdhanApiService.Result.Error(
-                        "إذن الموقع غير ممنوح - اضغط GPS وامنح الإذن"
-                    )
-                }
-                when (val loc = LocationHelper.getCurrentLocation(context)) {
-                    is LocationHelper.Result.Success -> {
-                        PrayerTimePreferences.saveLocation(context, loc.latitude, loc.longitude, loc.label)
-                        newCityName = loc.label
-                        AdhanApiService.fetchTimingsByCoordinates(loc.latitude, loc.longitude, method)
-                    }
-                    is LocationHelper.Result.Error ->
-                        AdhanApiService.Result.Error(loc.message)
-                }
-            } else {
-                if (manualCity.isBlank()) {
-                    return@withContext AdhanApiService.Result.Error("أدخل اسم المدينة")
-                }
-                AdhanApiService.fetchTimingsByCity(manualCity, method)
-            }
-        }
-    } catch (e: Throwable) {
-        Log.e("PrayerTimes", "refreshTimings crashed", e)
-        AdhanApiService.Result.Error("خطأ: ${e.message ?: "غير معروف"}")
-    }
-
-    // Back on main thread — safe to update state
-    newCityName?.let { setCityName(it) }
-
-    when (result) {
-        is AdhanApiService.Result.Success -> {
-            setTimings(result.data)
-            try {
-                PrayerTimeScheduler.scheduleAll(context, result.data)
-            } catch (e: Exception) {
-                Log.e("PrayerTimes", "scheduleAll failed", e)
-            }
+    try {
+        if (!PrayerTimePreferences.isFeatureEnabled(context)) {
             setError(null)
+            return
         }
-        is AdhanApiService.Result.Error -> {
-            setError(result.message)
-            setTimings(null)
+        setLoading(true)
+        setError(null)
+        val method = try {
+            PrayerTimePreferences.CALCULATION_METHODS.getOrNull(methodIndex)?.first ?: 4
+        } catch (e: Throwable) { 4 }
+
+        var newCityName: String? = null
+
+        val result = try {
+            withContext(Dispatchers.IO) {
+                if (useGps) {
+                    if (!LocationHelper.hasLocationPermission(context)) {
+                        return@withContext AdhanApiService.Result.Error(
+                            "إذن الموقع غير ممنوح - اضغط GPS وامنح الإذن"
+                        )
+                    }
+                    when (val loc = LocationHelper.getCurrentLocation(context)) {
+                        is LocationHelper.Result.Success -> {
+                            try {
+                                PrayerTimePreferences.saveLocation(context, loc.latitude,
+                                    loc.longitude, loc.label)
+                            } catch (e: Throwable) {
+                                Log.w(TAG, "saveLocation failed", e)
+                            }
+                            newCityName = loc.label
+                            AdhanApiService.fetchTimingsByCoordinates(loc.latitude, loc.longitude, method)
+                        }
+                        is LocationHelper.Result.Error ->
+                            AdhanApiService.Result.Error(loc.message)
+                    }
+                } else {
+                    if (manualCity.isBlank()) {
+                        return@withContext AdhanApiService.Result.Error("أدخل اسم المدينة")
+                    }
+                    AdhanApiService.fetchTimingsByCity(manualCity, method)
+                }
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "refreshTimings crashed", e)
+            AdhanApiService.Result.Error("خطأ: ${e.message ?: "غير معروف"}")
         }
+
+        // Back on main thread — safe to update state
+        newCityName?.let { setCityName(it) }
+
+        when (result) {
+            is AdhanApiService.Result.Success -> {
+                setTimings(result.data)
+                try {
+                    PrayerTimeScheduler.scheduleAll(context, result.data)
+                } catch (e: Throwable) {
+                    Log.e(TAG, "scheduleAll failed", e)
+                }
+                setError(null)
+            }
+            is AdhanApiService.Result.Error -> {
+                setError(result.message)
+                setTimings(null)
+            }
+        }
+        setLoading(false)
+    } catch (e: Throwable) {
+        Log.e(TAG, "doRefresh outer crashed", e)
+        try {
+            setError("خطأ غير متوقع: ${e.message ?: "غير معروف"}")
+            setLoading(false)
+        } catch (_: Throwable) {}
     }
-    setLoading(false)
 }
