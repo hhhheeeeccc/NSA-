@@ -270,58 +270,59 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
-                            // ===== Settings Card =====
+                            // ===== Settings Card (compact) =====
                             item {
                                 var selectedInterval by remember { mutableStateOf(getSavedInterval()) }
                                 var inputText by remember { mutableStateOf(getSavedInterval().toString()) }
 
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                                     colors = CardDefaults.cardColors(containerColor = Color.White)
                                 ) {
                                     Column(
-                                        modifier = Modifier.padding(20.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
+                                        modifier = Modifier.padding(14.dp)
                                     ) {
+                                        // Header row with icon + title + current interval badge
                                         Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Notifications,
+                                                contentDescription = null,
+                                                tint = Color(0xFF2E7D32),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("التذكير التلقائي",
+                                                fontSize = 15.sp,
+                                                color = Color(0xFF1B5E20),
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.weight(1f))
+                                            // Current interval badge
                                             Box(
                                                 modifier = Modifier
-                                                    .size(32.dp)
-                                                    .clip(androidx.compose.foundation.shape.CircleShape)
-                                                    .background(ZinahTheme.EmeraldMist),
-                                                contentAlignment = Alignment.Center
+                                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
+                                                    .background(Color(0xFFE8F5E9))
+                                                    .padding(horizontal = 10.dp, vertical = 4.dp)
                                             ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Notifications,
-                                                    contentDescription = null,
-                                                    tint = ZinahTheme.Emerald,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
+                                                Text("كل $selectedInterval دقيقة",
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFF2E7D32),
+                                                    fontWeight = FontWeight.SemiBold)
                                             }
-                                            Spacer(modifier = Modifier.width(10.dp))
-                                            Text("إعدادات التذكير التلقائي",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                color = ZinahTheme.EmeraldDeep,
-                                                fontWeight = FontWeight.Bold)
                                         }
-                                        Spacer(modifier = Modifier.height(16.dp))
 
-                                        Text("اختيارات سريعة (دقائق):",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = ZinahTheme.InkMute,
-                                            modifier = Modifier.fillMaxWidth())
-                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Spacer(modifier = Modifier.height(10.dp))
 
-                                        // Minute presets
+                                        // All presets in one compact flow row
+                                        // Minutes first
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
-                                            listOf(1L, 2L, 5L, 10L, 15L, 20L, 30L, 45L).forEach { mins ->
+                                            listOf(1L, 5L, 10L, 15L, 30L, 45L).forEach { mins ->
                                                 val isSelected = selectedInterval == mins
-                                                Button(
+                                                TextButton(
                                                     onClick = {
                                                         selectedInterval = mins
                                                         inputText = mins.toString()
@@ -329,36 +330,27 @@ class MainActivity : ComponentActivity() {
                                                         scheduleExactDhikrAlarm(mins)
                                                     },
                                                     modifier = Modifier.weight(1f),
-                                                    contentPadding = PaddingValues(vertical = 8.dp),
-                                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
-                                                    colors = ButtonDefaults.buttonColors(
-                                                        containerColor = if (isSelected) ZinahTheme.Emerald
-                                                                          else ZinahTheme.EmeraldMist,
-                                                        contentColor = if (isSelected) Color.White else ZinahTheme.Emerald
+                                                    contentPadding = PaddingValues(vertical = 4.dp),
+                                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                                    colors = ButtonDefaults.textButtonColors(
+                                                        containerColor = if (isSelected) Color(0xFF2E7D32) else Color(0xFFF1F8E9),
+                                                        contentColor = if (isSelected) Color.White else Color(0xFF2E7D32)
                                                     )
                                                 ) {
                                                     Text("${mins}د", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                                                 }
                                             }
                                         }
-
-                                        Spacer(modifier = Modifier.height(8.dp))
-
-                                        Text("ساعات:",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = ZinahTheme.InkMute,
-                                            modifier = Modifier.fillMaxWidth())
-                                        Spacer(modifier = Modifier.height(8.dp))
-
-                                        // Hour presets
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        // Hours
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
                                             listOf(1L, 2L, 3L, 6L, 12L).forEach { hours ->
                                                 val mins = hours * 60
                                                 val isSelected = selectedInterval == mins
-                                                Button(
+                                                TextButton(
                                                     onClick = {
                                                         selectedInterval = mins
                                                         inputText = mins.toString()
@@ -366,12 +358,11 @@ class MainActivity : ComponentActivity() {
                                                         scheduleExactDhikrAlarm(mins)
                                                     },
                                                     modifier = Modifier.weight(1f),
-                                                    contentPadding = PaddingValues(vertical = 8.dp),
-                                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
-                                                    colors = ButtonDefaults.buttonColors(
-                                                        containerColor = if (isSelected) ZinahTheme.Emerald
-                                                                          else ZinahTheme.EmeraldMist,
-                                                        contentColor = if (isSelected) Color.White else ZinahTheme.Emerald
+                                                    contentPadding = PaddingValues(vertical = 4.dp),
+                                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                                    colors = ButtonDefaults.textButtonColors(
+                                                        containerColor = if (isSelected) Color(0xFF2E7D32) else Color(0xFFF1F8E9),
+                                                        contentColor = if (isSelected) Color.White else Color(0xFF2E7D32)
                                                     )
                                                 ) {
                                                     Text("${hours}س", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
@@ -379,97 +370,81 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
 
-                                        Spacer(modifier = Modifier.height(16.dp))
-                                        Text("أو أدخل فاصلًا مخصصًا:",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = ZinahTheme.InkMute,
-                                            modifier = Modifier.fillMaxWidth())
                                         Spacer(modifier = Modifier.height(8.dp))
-
-                                        OutlinedTextField(
-                                            value = inputText,
-                                            onValueChange = { inputText = it },
-                                            label = { Text("أدخل الدقائق (أقل شيء 1 دقيقة)") },
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                            singleLine = true,
-                                            modifier = Modifier.fillMaxWidth(0.8f)
-                                        )
-                                        Spacer(modifier = Modifier.height(12.dp))
-
-                                        Button(onClick = {
-                                            val minutes = inputText.toLongOrNull()
-                                            if (minutes != null) {
-                                                if (minutes >= 1) {
-                                                    selectedInterval = minutes
-                                                    saveInterval(minutes)
-                                                    scheduleExactDhikrAlarm(minutes)
-                                                } else {
-                                                    Toast.makeText(this@MainActivity, "أقل مدة مسموحة هي 1 دقيقة", Toast.LENGTH_LONG).show()
-                                                }
-                                            } else {
-                                                Toast.makeText(this@MainActivity, "الرجاء إدخال رقم صحيح", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }) {
-                                            Text("تطبيق التعديل")
-                                        }
-
-                                        Spacer(modifier = Modifier.height(12.dp))
-                                        Text(
-                                            "الفاصل الحالي: كل $selectedInterval دقيقة",
-                                            color = Color(0xFF2E7D32),
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                            }
-
-                            // ===== Sound Selection Section (simplified) =====
-                            item {
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                                    colors = CardDefaults.cardColors(containerColor = Color.White)
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(16.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(36.dp)
-                                                .clip(androidx.compose.foundation.shape.CircleShape)
-                                                .background(ZinahTheme.Sand),
-                                            contentAlignment = Alignment.Center
+                                        // Custom input + apply button in one row
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Notifications,
-                                                contentDescription = null,
-                                                tint = ZinahTheme.GoldDeep,
-                                                modifier = Modifier.size(20.dp)
+                                            OutlinedTextField(
+                                                value = inputText,
+                                                onValueChange = { inputText = it },
+                                                label = { Text("مخصص", fontSize = 11.sp) },
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedBorderColor = Color(0xFF2E7D32),
+                                                    cursorColor = Color(0xFF2E7D32)
+                                                )
                                             )
-                                        }
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                "صوت التذكير",
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ZinahTheme.EmeraldDeep
-                                            )
-                                            Text(
-                                                "صلي على محمد - بصوت بشري",
-                                                fontSize = 12.sp,
-                                                color = ZinahTheme.InkMute
-                                            )
+                                            Button(
+                                                onClick = {
+                                                    val minutes = inputText.toLongOrNull()
+                                                    if (minutes != null && minutes >= 1) {
+                                                        selectedInterval = minutes
+                                                        saveInterval(minutes)
+                                                        scheduleExactDhikrAlarm(minutes)
+                                                        Toast.makeText(this@MainActivity,
+                                                            "تم الضبط كل $minutes دقيقة",
+                                                            Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        Toast.makeText(this@MainActivity,
+                                                            "أدخل رقمًا صحيحًا (1 على الأقل)",
+                                                            Toast.LENGTH_SHORT).show()
+                                                    }
+                                                },
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp)
+                                            ) {
+                                                Text("تطبيق", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            }
                                         }
                                     }
                                 }
                             }
 
-                            // ===== Stop Button =====
+                            // ===== Sound info (compact, single row) =====
+                            item {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                                        .background(Color.White)
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Notifications,
+                                        contentDescription = null,
+                                        tint = Color(0xFFD4AF37),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("صوت التذكير:",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFF1B5E20))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("صلي على محمد بصوت بشري",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF6B6B6B))
+                                }
+                            }
+
+                            // ===== Stop Button (compact) =====
                             item {
                                 var isStopped by remember { mutableStateOf(false) }
                                 Button(
@@ -478,9 +453,7 @@ class MainActivity : ComponentActivity() {
                                             val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
                                             val intent = Intent(this@MainActivity, DhikrAlarmReceiver::class.java)
                                             val pendingIntent = PendingIntent.getBroadcast(
-                                                this@MainActivity,
-                                                0,
-                                                intent,
+                                                this@MainActivity, 0, intent,
                                                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                                             )
                                             alarmManager.cancel(pendingIntent)
@@ -496,16 +469,15 @@ class MainActivity : ComponentActivity() {
                                             Toast.makeText(this@MainActivity, "حدث خطأ", Toast.LENGTH_SHORT).show()
                                         }
                                     },
-                                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                                    modifier = Modifier.fillMaxWidth().height(46.dp),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (isStopped) ZinahTheme.Emerald else Color(0xFFD32F2F)
+                                        containerColor = if (isStopped) Color(0xFF2E7D32) else Color(0xFFD32F2F)
                                     )
                                 ) {
                                     Text(
-                                        if (isStopped) "إعادة تشغيل التذكيرات" else "إيقاف التذكيرات",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp
+                                        if (isStopped) "إعادة التذكيرات" else "إيقاف التذكيرات",
+                                        fontWeight = FontWeight.Bold, fontSize = 13.sp
                                     )
                                 }
                             }

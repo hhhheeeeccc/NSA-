@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.zinah"
         minSdk = 24
         targetSdk = 34
-        versionCode = 20
-        versionName = "3.0"
+        versionCode = 21
+        versionName = "3.1"
         vectorDrawables { useSupportLibrary = true }
     }
 
