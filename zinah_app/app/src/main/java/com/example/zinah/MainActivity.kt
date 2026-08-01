@@ -82,6 +82,7 @@ class MainActivity : ComponentActivity() {
 
         askNotificationPermission()
         checkExactAlarmPermission()
+        requestSystemAlertWindowPermission()
 
         setContent {
             MaterialTheme(
@@ -484,6 +485,15 @@ class MainActivity : ComponentActivity() {
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
             if (!alarmManager.canScheduleExactAlarms()) {
                 val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                startActivity(intent)
+            }
+        }
+    }
+
+    private fun requestSystemAlertWindowPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.canDrawOverlays(this)) {
+                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
                 startActivity(intent)
             }
         }

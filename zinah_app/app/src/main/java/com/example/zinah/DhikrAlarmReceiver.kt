@@ -57,12 +57,22 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
 
         val randomDhikr = if (allItems.isNotEmpty()) allItems.random() else "سبحان الله وبحمده"
 
-        // Open app intent
+        // Full-screen notification intent (appears on lock screen / side of screen)
+        val fullScreenIntent = Intent(context, NotificationActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            putExtra("dhikr_text", randomDhikr)
+        }
+        val fullScreenPendingIntent = PendingIntent.getActivity(
+            context, 0, fullScreenIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Also open main app
         val openIntent = Intent(context, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
         val openPendingIntent = PendingIntent.getActivity(
-            context, 0, openIntent,
+            context, 1, openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -77,6 +87,7 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
             .setContentIntent(openPendingIntent)
+            .setFullScreenIntent(fullScreenPendingIntent, true)
             .setVibrate(longArrayOf(0, 200, 100, 200, 100, 200))
             .setLights(android.graphics.Color.GREEN, 1000, 500)
             .build()
