@@ -9,7 +9,12 @@ import android.os.Build
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == "android.intent.action.QUICKBOOT_POWERON") {
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED ||
+            intent.action == "android.intent.action.QUICKBOOT_POWERON" ||
+            intent.action == "android.intent.action.MY_PACKAGE_REPLACED"
+        ) {
+            // Start foreground service immediately after boot
+            DhikrForegroundService.start(context)
             val sharedPref = context.getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
             val intervalMinutes = sharedPref.getLong("interval", 15L) // Default to 15 mins
 

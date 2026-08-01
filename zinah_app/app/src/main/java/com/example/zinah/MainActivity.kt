@@ -2,6 +2,8 @@ package com.example.zinah
 
 import android.Manifest
 import android.app.AlarmManager
+import android.net.Uri
+import android.os.PowerManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -83,6 +85,9 @@ class MainActivity : ComponentActivity() {
         askNotificationPermission()
         checkExactAlarmPermission()
         requestSystemAlertWindowPermission()
+        requestBatteryOptimization()
+        // Start foreground service for guaranteed background execution
+        DhikrForegroundService.start(this)
 
         setContent {
             MaterialTheme(
@@ -494,6 +499,18 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (!Settings.canDrawOverlays(this)) {
                 val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                startActivity(intent)
+            }
+        }
+    }
+
+    private fun requestBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
                 startActivity(intent)
             }
         }
