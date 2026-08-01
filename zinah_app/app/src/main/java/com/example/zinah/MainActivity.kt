@@ -18,17 +18,25 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -101,16 +109,10 @@ class MainActivity : ComponentActivity() {
         updateNotificationSound(savedSound)
 
         setContent {
-            MaterialTheme(
-                colorScheme = lightColorScheme(
-                    primary = Color(0xFF2E7D32),
-                    secondary = Color(0xFFD4AF37),
-                    background = Color(0xFFF1F8E9)
-                )
-            ) {
+            ZinahTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = ZinahTheme.Cream
                 ) {
                     var selectedTab by remember { mutableStateOf(0) }
 
@@ -125,15 +127,38 @@ class MainActivity : ComponentActivity() {
                         topBar = {
                             TopAppBar(
                                 title = {
-                                    Text(
-                                        if (selectedTab == 0) "تطبيق زينة للأذكار" else "مواقيت الصلاة",
+                                    Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        textAlign = TextAlign.Center,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (selectedTab == 0) {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                                                contentDescription = null,
+                                                tint = ZinahTheme.GoldBright,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Filled.Schedule,
+                                                contentDescription = null,
+                                                tint = ZinahTheme.GoldBright,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                        }
+                                        Text(
+                                            if (selectedTab == 0) "تطبيق زينة للأذكار" else "مواقيت الصلاة",
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.titleLarge
+                                        )
+                                    }
                                 },
                                 colors = TopAppBarDefaults.topAppBarColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    containerColor = ZinahTheme.EmeraldDeep,
                                     titleContentColor = Color.White
                                 )
                             )
@@ -141,19 +166,42 @@ class MainActivity : ComponentActivity() {
                         bottomBar = {
                             NavigationBar(
                                 containerColor = Color.White,
-                                contentColor = Color(0xFF2E7D32)
+                                contentColor = ZinahTheme.Emerald,
+                                tonalElevation = 8.dp
                             ) {
                                 NavigationBarItem(
                                     selected = selectedTab == 0,
                                     onClick = { selectedTab = 0 },
-                                    icon = { Icon(Icons.Filled.MenuBook, contentDescription = "الأذكار") },
-                                    label = { Text("الأذكار", fontSize = 11.sp) }
+                                    icon = {
+                                        Icon(
+                                            imageVector = if (selectedTab == 0) Icons.AutoMirrored.Filled.MenuBook
+                                                          else Icons.AutoMirrored.Outlined.MenuBook,
+                                            contentDescription = "الأذكار"
+                                        )
+                                    },
+                                    label = { Text("الأذكار") },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = ZinahTheme.Emerald,
+                                        selectedTextColor = ZinahTheme.Emerald,
+                                        indicatorColor = ZinahTheme.EmeraldMist
+                                    )
                                 )
                                 NavigationBarItem(
                                     selected = selectedTab == 1,
                                     onClick = { selectedTab = 1 },
-                                    icon = { Icon(Icons.Filled.Schedule, contentDescription = "مواقيت الصلاة") },
-                                    label = { Text("مواقيت الصلاة", fontSize = 11.sp) }
+                                    icon = {
+                                        Icon(
+                                            imageVector = if (selectedTab == 1) Icons.Filled.Schedule
+                                                          else Icons.Outlined.Schedule,
+                                            contentDescription = "مواقيت الصلاة"
+                                        )
+                                    },
+                                    label = { Text("مواقيت الصلاة") },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = ZinahTheme.Emerald,
+                                        selectedTextColor = ZinahTheme.Emerald,
+                                        indicatorColor = ZinahTheme.EmeraldMist
+                                    )
                                 )
                             }
                         }
@@ -175,9 +223,78 @@ class MainActivity : ComponentActivity() {
     private fun AdhkarContent(modifier: Modifier = Modifier) {
         LazyColumn(
             modifier = modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+                            // ===== Hero Card =====
+                            item {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(160.dp)
+                                            .background(HeroCardGradient)
+                                    ) {
+                                        GeometricPatternBackground(
+                                            modifier = Modifier.fillMaxSize(),
+                                            color = ZinahTheme.Gold.copy(alpha = 0.08f)
+                                        )
+                                        // Gold glow
+                                        Box(
+                                            modifier = Modifier
+                                                .size(140.dp)
+                                                .align(Alignment.TopEnd)
+                                                .offset(x = 50.dp, y = (-50).dp)
+                                                .blur(50.dp)
+                                                .background(ZinahTheme.Gold.copy(alpha = 0.2f))
+                                        )
+                                        EightPointStar(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomStart)
+                                                .padding(16.dp),
+                                            size = 48.dp,
+                                            color = ZinahTheme.Gold.copy(alpha = 0.4f)
+                                        )
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(24.dp),
+                                            verticalArrangement = Arrangement.Center,
+                                            horizontalAlignment = Alignment.Start
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                CrescentMoon(size = 32.dp, primaryColor = ZinahTheme.GoldBright)
+                                                Spacer(modifier = Modifier.width(12.dp))
+                                                Text(
+                                                    "أذكار وأدعية",
+                                                    color = ZinahTheme.GoldBright,
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                "${AdhkarData.allAdhkar.size} ذكر ودعاء",
+                                                color = Color.White,
+                                                style = MaterialTheme.typography.headlineMedium,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                "تذكيرات تلقائية تساعدك على ذكر الله",
+                                                color = Color.White.copy(alpha = 0.8f),
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
                             // ===== Settings Card =====
                             item {
                                 var selectedInterval by remember { mutableStateOf(getSavedInterval()) }
@@ -185,25 +302,50 @@ class MainActivity : ComponentActivity() {
 
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                                     colors = CardDefaults.cardColors(containerColor = Color.White)
                                 ) {
                                     Column(
-                                        modifier = Modifier.padding(16.dp),
+                                        modifier = Modifier.padding(20.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Text("إعدادات التذكير التلقائي", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                                    .background(ZinahTheme.EmeraldMist),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Notifications,
+                                                    contentDescription = null,
+                                                    tint = ZinahTheme.Emerald,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Text("إعدادات التذكير التلقائي",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = ZinahTheme.EmeraldDeep,
+                                                fontWeight = FontWeight.Bold)
+                                        }
+                                        Spacer(modifier = Modifier.height(16.dp))
 
-                                        Text("اختيارات سريعة:", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color.Gray)
+                                        Text("اختيارات سريعة (دقائق):",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = ZinahTheme.InkMute,
+                                            modifier = Modifier.fillMaxWidth())
                                         Spacer(modifier = Modifier.height(8.dp))
 
                                         // Minute presets
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceEvenly
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             listOf(1L, 2L, 5L, 10L, 15L, 20L, 30L, 45L).forEach { mins ->
+                                                val isSelected = selectedInterval == mins
                                                 Button(
                                                     onClick = {
                                                         selectedInterval = mins
@@ -211,41 +353,62 @@ class MainActivity : ComponentActivity() {
                                                         saveInterval(mins)
                                                         scheduleExactDhikrAlarm(mins)
                                                     },
-                                                    modifier = Modifier.width(55.dp),
-                                                    contentPadding = PaddingValues(4.dp),
-                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF43A047))
+                                                    modifier = Modifier.weight(1f),
+                                                    contentPadding = PaddingValues(vertical = 8.dp),
+                                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        containerColor = if (isSelected) ZinahTheme.Emerald
+                                                                          else ZinahTheme.EmeraldMist,
+                                                        contentColor = if (isSelected) Color.White else ZinahTheme.Emerald
+                                                    )
                                                 ) {
-                                                    Text("${mins}د", fontSize = 11.sp)
+                                                    Text("${mins}د", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                                                 }
                                             }
                                         }
 
-                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        Text("ساعات:",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = ZinahTheme.InkMute,
+                                            modifier = Modifier.fillMaxWidth())
+                                        Spacer(modifier = Modifier.height(8.dp))
 
                                         // Hour presets
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceEvenly
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             listOf(1L, 2L, 3L, 6L, 12L).forEach { hours ->
+                                                val mins = hours * 60
+                                                val isSelected = selectedInterval == mins
                                                 Button(
                                                     onClick = {
-                                                        val mins = hours * 60
                                                         selectedInterval = mins
                                                         inputText = mins.toString()
                                                         saveInterval(mins)
                                                         scheduleExactDhikrAlarm(mins)
                                                     },
-                                                    modifier = Modifier.width(55.dp),
-                                                    contentPadding = PaddingValues(4.dp)
+                                                    modifier = Modifier.weight(1f),
+                                                    contentPadding = PaddingValues(vertical = 8.dp),
+                                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        containerColor = if (isSelected) ZinahTheme.Emerald
+                                                                          else ZinahTheme.EmeraldMist,
+                                                        contentColor = if (isSelected) Color.White else ZinahTheme.Emerald
+                                                    )
                                                 ) {
-                                                    Text("${hours}س", fontSize = 11.sp)
+                                                    Text("${hours}س", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                                                 }
                                             }
                                         }
 
-                                        Spacer(modifier = Modifier.height(12.dp))
-                                        Text("أو أدخل فاصل مخصص:", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color.Gray)
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Text("أو أدخل فاصلًا مخصصًا:",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = ZinahTheme.InkMute,
+                                            modifier = Modifier.fillMaxWidth())
                                         Spacer(modifier = Modifier.height(8.dp))
 
                                         OutlinedTextField(
@@ -502,39 +665,73 @@ class MainActivity : ComponentActivity() {
 
                             // ===== Adhkar list header =====
                             item {
-                                Text(
-                                    "الأذكار والأدعية",
-                                    modifier = Modifier.padding(top = 8.dp),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 20.sp,
-                                    color = Color(0xFF2E7D32)
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(4.dp)
+                                            .height(24.dp)
+                                            .background(ZinahTheme.Gold)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        "الأذكار والأدعية",
+                                        style = MaterialTheme.typography.headlineMedium,
+                                        color = ZinahTheme.EmeraldDeep
+                                    )
+                                }
                             }
 
                             // ===== Custom adhkar list =====
                             val customItems = getCustomAdhkar()
                             if (customItems.isNotEmpty()) {
                                 item {
-                                    Text(
-                                        "أذكاري المخصصة:",
-                                        modifier = Modifier.padding(top = 8.dp),
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 16.sp,
-                                        color = Color(0xFF1565C0)
-                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(4.dp)
+                                                .height(20.dp)
+                                                .background(ZinahTheme.Sky)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text(
+                                            "أذكاري المخصصة:",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = ZinahTheme.Sky,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
                                 }
                                 items(customItems) { text ->
                                     Card(
                                         modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(16.dp),
                                         colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD)),
                                         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                                     ) {
-                                        Text(
-                                            text = text,
+                                        Row(
                                             modifier = Modifier.padding(16.dp),
-                                            fontSize = 16.sp,
-                                            textAlign = TextAlign.Center
-                                        )
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(3.dp)
+                                                    .height(40.dp)
+                                                    .background(ZinahTheme.Sky)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(
+                                                text = text,
+                                                modifier = Modifier.weight(1f),
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                textAlign = TextAlign.Right
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -543,15 +740,28 @@ class MainActivity : ComponentActivity() {
                             items(AdhkarData.allAdhkar) { dhikr ->
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(16.dp),
                                     colors = CardDefaults.cardColors(containerColor = Color.White),
-                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                                 ) {
-                                    Text(
-                                        text = dhikr,
+                                    Row(
                                         modifier = Modifier.padding(16.dp),
-                                        fontSize = 18.sp,
-                                        textAlign = TextAlign.Center
-                                    )
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(3.dp)
+                                                .height(40.dp)
+                                                .background(ZinahTheme.Gold)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text(
+                                            text = dhikr,
+                                            modifier = Modifier.weight(1f),
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            textAlign = TextAlign.Right
+                                        )
+                                    }
                                 }
                             }
                         }
