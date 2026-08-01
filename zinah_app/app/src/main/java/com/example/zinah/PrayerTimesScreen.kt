@@ -597,14 +597,14 @@ private fun LocationCard(
             ) {
                 SegmentedButton(
                     text = "GPS تلقائي",
-                    icon = Icons.Filled.MyLocation,
+                    icon = Icons.Filled.LocationOn,
                     selected = useGps,
                     onClick = { onUseGpsChange(true) },
                     modifier = Modifier.weight(1f)
                 )
                 SegmentedButton(
                     text = "اختيار يدوي",
-                    icon = Icons.Filled.EditLocationAlt,
+                    icon = Icons.Filled.Edit,
                     selected = !useGps,
                     onClick = { onUseGpsChange(false) },
                     modifier = Modifier.weight(1f)
@@ -688,11 +688,11 @@ private fun PrayerCard(
         PrayerType.ISHA -> ZinahTheme.IshaColor
     }
     val icon = when (prayer) {
-        PrayerType.FAJR -> Icons.Filled.Brightness3        // crescent (pre-dawn)
-        PrayerType.DHUHR -> Icons.Filled.WbSunny           // sun
-        PrayerType.ASR -> Icons.Filled.WbTwilight          // afternoon twilight
-        PrayerType.MAGHRIB -> Icons.Filled.Brightness5     // sunset
-        PrayerType.ISHA -> Icons.Filled.NightsStay         // night moon
+        PrayerType.FAJR -> Icons.Filled.Star            // pre-dawn (use star as crescent substitute)
+        PrayerType.DHUHR -> Icons.Filled.WbSunny        // sun
+        PrayerType.ASR -> Icons.Filled.LightMode        // afternoon light
+        PrayerType.MAGHRIB -> Icons.Filled.BrightnessLow// sunset
+        PrayerType.ISHA -> Icons.Filled.Bedtime         // night moon
     }
 
     Card(
@@ -879,7 +879,7 @@ private fun AdvancedSettingsCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.Fullscreen,
+                        imageVector = Icons.Filled.Star,
                         contentDescription = null,
                         tint = ZinahTheme.GoldDeep,
                         modifier = Modifier.size(20.dp)
@@ -962,7 +962,7 @@ private fun ErrorCard(message: String) {
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Filled.Error, contentDescription = null,
+            Icon(Icons.Filled.Warning, contentDescription = null,
                 tint = ZinahTheme.Rose, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(12.dp))
             Text(message, color = Color(0xFFB71C1C),
