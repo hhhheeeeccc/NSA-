@@ -9,11 +9,15 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 
 class DhikrAlarmReceiver : BroadcastReceiver() {
+
+    private val TAG = "DhikrAlarmReceiver"
+
     override fun onReceive(context: Context, intent: Intent) {
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val wakeLock = powerManager.newWakeLock(
@@ -39,6 +43,9 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
         val soundUri = android.net.Uri.parse("android.resource://${context.packageName}/$soundResId")
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // IMPORTANT: Set channel sound to SILENT (null) to avoid double playback.
+            // We play the sound manually with MediaPlayer below; if the channel also has a sound,
+            // the user hears the audio TWICE (channel sound + MediaPlayer sound).
             val channel = NotificationChannel(
                 channelId,
                 "إشعارات الأذكار المباشرة",
@@ -50,10 +57,11 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
                 lockscreenVisibility = 1
                 setBypassDnd(true)
                 setShowBadge(true)
+                // Mute the channel — MediaPlayer handles the audio
                 setSound(
-                    soundUri,
+                    android.net.Uri.EMPTY,
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                         .build()
                 )
@@ -73,21 +81,9 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
         val overlayIntent = Intent(context, DhikrOverlayService::class.java).apply {
             putExtra("dhikr_text", randomDhikr)
         }
-        // We use startService instead of startForegroundService because it's a short-lived overlay
-        // and the app already has a main foreground service running.
         context.startService(overlayIntent)
 
-        // Also show a standard notification with the sound
-        val openIntent = Intent(context, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        }
-        val openPendingIntent = PendingIntent.getActivity(
-            context, 1, openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        // The user requested to remove the top notification and keep only the overlay.
-        // We play the sound manually using MediaPlayer.
+        // Play the sound ONCE using MediaPlayer (the channel is silent, so no double playback)
         try {
             val mediaPlayer = MediaPlayer().apply {
                 setDataSource(context, soundUri)
@@ -102,7 +98,7 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
                 setOnCompletionListener { release() }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Failed to play dhikr sound", e)
         }
     }
 
@@ -136,14 +132,12 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
                 if (alarmManager.canScheduleExactAlarms()) {
                     alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
                 } else {
-                    // Fallback if exact alarms are denied
                     alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
                 }
             } else {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
             }
         } catch (e: SecurityException) {
-            // Handle edge case where permission was revoked
             alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
         }
     }

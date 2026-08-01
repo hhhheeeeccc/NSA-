@@ -810,11 +810,16 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             val channelId = "zinah_dhikr_channel_exact"
-            
-            val soundResId = R.raw.sali_ala_mohammad
-            
-            val soundUri = "android.resource://$packageName/$soundResId"
-            
+
+            // IMPORTANT: Channel sound is set to SILENT (Uri.EMPTY).
+            // The actual sound is played manually by MediaPlayer in DhikrAlarmReceiver.
+            // If the channel has its own sound, the user hears the audio TWICE
+            // (channel sound + MediaPlayer sound).
+            // Delete the old channel if it existed with a sound, then recreate silent.
+            try {
+                notificationManager.deleteNotificationChannel(channelId)
+            } catch (e: Exception) {}
+
             val channel = NotificationChannel(
                 channelId,
                 "إشعارات الأذكار المباشرة",
@@ -826,10 +831,11 @@ class MainActivity : ComponentActivity() {
                 lockscreenVisibility = 1
                 setBypassDnd(true)
                 setShowBadge(true)
+                // Mute the channel — MediaPlayer handles the audio to avoid double playback
                 setSound(
-                    android.net.Uri.parse(soundUri),
+                    android.net.Uri.EMPTY,
                     android.media.AudioAttributes.Builder()
-                        .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                        .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
                         .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
                         .build()
                 )
