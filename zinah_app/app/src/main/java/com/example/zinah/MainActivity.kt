@@ -239,14 +239,6 @@ class MainActivity : ComponentActivity() {
 
                             // ===== Sound Selection Section =====
                             item {
-                                val soundNames = listOf("هادئ", "قوي", "نغمتان", "عميق")
-                                val soundResIds = listOf(
-                                    R.raw.dhikr_gentle,
-                                    R.raw.dhikr_strong,
-                                    R.raw.dhikr_double,
-                                    R.raw.dhikr_deep
-                                )
-                                var selectedSound by remember { mutableIntStateOf(0) }
                                 var mediaPlayer by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
 
                                 Card(
@@ -259,57 +251,26 @@ class MainActivity : ComponentActivity() {
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         Text(
-                                            "صوت الإشعار",
+                                            "صوت التذكير",
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 18.sp,
                                             color = Color(0xFF2E7D32)
                                         )
                                         Spacer(modifier = Modifier.height(12.dp))
                                         Text(
-                                            "اختر صوت التذكير",
+                                            "تم تفعيل صوت 'صلي على محمد' بصوت بشري حقيقي",
                                             fontSize = 14.sp,
-                                            color = Color.Gray
+                                            color = Color.Gray,
+                                            textAlign = TextAlign.Center
                                         )
                                         Spacer(modifier = Modifier.height(12.dp))
-
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceEvenly
-                                        ) {
-                                            soundNames.forEachIndexed { index, name ->
-                                                Button(
-                                                    onClick = {
-                                                        selectedSound = index
-                                                        val prefs = getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
-                                                        with(prefs.edit()) {
-                                                            putInt("soundChoice", index)
-                                                            apply()
-                                                        }
-                                                        // Update notification channel with new sound
-                                                        updateNotificationSound(index)
-                                                        Toast.makeText(this@MainActivity, "تم اختيار الصوت: $name", Toast.LENGTH_SHORT).show()
-                                                    },
-                                                    modifier = Modifier.width(80.dp),
-                                                    contentPadding = PaddingValues(8.dp),
-                                                    colors = if (selectedSound == index) {
-                                                        ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
-                                                    } else {
-                                                        ButtonDefaults.buttonColors(containerColor = Color(0xFFE0E0E0), contentColor = Color.Black)
-                                                    }
-                                                ) {
-                                                    Text(name, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                                }
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.height(8.dp))
 
                                         Button(
                                             onClick = {
                                                 try {
                                                     mediaPlayer?.stop()
                                                     mediaPlayer?.release()
-                                                    mediaPlayer = android.media.MediaPlayer.create(this@MainActivity, soundResIds[selectedSound]).also { mp ->
+                                                    mediaPlayer = android.media.MediaPlayer.create(this@MainActivity, R.raw.sali_ala_mohammad).also { mp ->
                                                         mp.setVolume(1.0f, 1.0f)
                                                         mp.start()
                                                         mp.setOnCompletionListener { mp.release() }
@@ -318,9 +279,9 @@ class MainActivity : ComponentActivity() {
                                                     Toast.makeText(this@MainActivity, "خطأ في تشغيل الصوت", Toast.LENGTH_SHORT).show()
                                                 }
                                             },
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF43A047))
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD4AF37))
                                         ) {
-                                            Text("🔊 معاينة الصوت", fontSize = 14.sp)
+                                            Text("🔊 تجربة الصوت البشري", fontSize = 14.sp)
                                         }
                                     }
                                 }
@@ -606,13 +567,7 @@ class MainActivity : ComponentActivity() {
             val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             val channelId = "zinah_dhikr_channel_exact"
             
-            val soundResId = when (soundIndex) {
-                0 -> R.raw.dhikr_gentle
-                1 -> R.raw.dhikr_strong
-                2 -> R.raw.dhikr_double
-                3 -> R.raw.dhikr_deep
-                else -> R.raw.dhikr_gentle
-            }
+            val soundResId = R.raw.sali_ala_mohammad
             
             val soundUri = "android.resource://$packageName/$soundResId"
             
