@@ -36,19 +36,23 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
 
     private fun showNotification(context: Context) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channelId = "zinah_dhikr_channel_exact"
+        // IMPORTANT: Use a NEW channel ID to force Android to create a fresh silent channel.
+        // The old channel "zinah_dhikr_channel_exact" may have had a sound set on a previous
+        // app version, and Android does NOT allow updating channel sound after creation.
+        // By using a new ID, we guarantee the channel is silent.
+        val channelId = "zinah_dhikr_silent_v2"
         val sharedPref = context.getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
 
         val soundResId = R.raw.sali_ala_mohammad
         val soundUri = android.net.Uri.parse("android.resource://${context.packageName}/$soundResId")
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // IMPORTANT: Set channel sound to SILENT (null) to avoid double playback.
-            // We play the sound manually with MediaPlayer below; if the channel also has a sound,
-            // the user hears the audio TWICE (channel sound + MediaPlayer sound).
+            // Delete old channels if they exist (best-effort)
+            try { notificationManager.deleteNotificationChannel("zinah_dhikr_channel_exact") } catch (_: Exception) {}
+
             val channel = NotificationChannel(
                 channelId,
-                "إشعارات الأذكار المباشرة",
+                "إشعارات الأذكار",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "قناة إشعارات تطبيق زينة"
@@ -57,7 +61,8 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
                 lockscreenVisibility = 1
                 setBypassDnd(true)
                 setShowBadge(true)
-                // Mute the channel — MediaPlayer handles the audio
+                // CRITICAL: Silent sound — AdhanPlayer plays the audio via MediaPlayer.
+                // If the channel had a sound, the user would hear it TWICE.
                 setSound(
                     android.net.Uri.EMPTY,
                     AudioAttributes.Builder()

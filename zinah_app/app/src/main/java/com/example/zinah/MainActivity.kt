@@ -97,13 +97,13 @@ class MainActivity : ComponentActivity() {
         checkExactAlarmPermission()
         requestSystemAlertWindowPermission()
         requestBatteryOptimization()
-        // Initialize selected sound
-        val prefs = getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
-        val savedSound = prefs.getInt("soundChoice", 0)
         // Start foreground service for guaranteed background execution
         DhikrForegroundService.start(this)
-        // Update notification channel with saved sound
-        updateNotificationSound(savedSound)
+        // NOTE: updateNotificationSound() is intentionally NOT called here.
+        // It used to recreate the notification channel on every app launch, but
+        // Android ignores sound changes to existing channels anyway, and the
+        // channel is already created (silent) in DhikrAlarmReceiver when the
+        // first alarm fires. Calling it here was redundant and could cause issues.
 
         setContent {
             ZinahTheme {

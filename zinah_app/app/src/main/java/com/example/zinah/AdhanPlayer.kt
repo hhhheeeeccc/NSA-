@@ -9,35 +9,56 @@ import android.util.Log
 /**
  * Singleton wrapper around [MediaPlayer] for playing audio in the app.
  *
- * CRITICAL: This prevents double-playback by tracking whether audio is
- * currently playing. If [play] is called while audio is already playing,
- * the new call is IGNORED (no second MediaPlayer created).
+ * CRITICAL: This prevents double-playback using TWO mechanisms:
+ *  1. isPlaying() check — if audio is currently playing, ignore new calls
+ *  2. Timestamp debounce — if audio was played within the last 10 seconds,
+ *     ignore new calls (prevents two alarms firing 1-2 seconds apart from
+ *     both starting playback)
  *
  * This fixes the bug where the dhikr sound was heard twice because both
- * DhikrForegroundService and MainActivity were scheduling alarms that
- * fired DhikrAlarmReceiver at roughly the same time.
+ * the foreground service and the activity were scheduling alarms that
+ * fired at roughly the same time.
  */
 object AdhanPlayer {
 
     private const val TAG = "AdhanPlayer"
+    private const val DEBOUNCE_MS = 10_000L // 10 seconds — ignore play() calls within this window
 
     @Volatile
     private var currentPlayer: MediaPlayer? = null
+
+    /** Timestamp (System.currentTimeMillis) of the last time play() was called. */
+    @Volatile
+    private var lastPlayTime: Long = 0L
 
     /** True iff a clip is currently playing. */
     fun isPlaying(): Boolean = currentPlayer?.isPlaying == true
 
     /**
      * Start playing the audio from the given raw resource id.
-     * If audio is already playing, this call is IGNORED (no double playback).
+     *
+     * If audio is already playing, OR if play() was called within the last
+     * [DEBOUNCE_MS] milliseconds, this call is IGNORED.
      */
     fun play(context: Context, soundResId: Int, onCompletion: () -> Unit = {}) {
-        // CRITICAL: If already playing, do NOT start a second player
+        val now = System.currentTimeMillis()
+
+        // CRITICAL: Debounce — if we just played audio recently, ignore this call.
+        // This handles the case where two alarms fire 1-2 seconds apart: the first
+        // one starts playback, the second one is ignored because of the debounce window.
+        if (now - lastPlayTime < DEBOUNCE_MS) {
+            Log.d(TAG, "Ignoring play() call — within debounce window (${now - lastPlayTime}ms since last play)")
+            return
+        }
+
+        // If already playing, do NOT start a second player
         if (isPlaying()) {
             Log.d(TAG, "Already playing — ignoring duplicate play() call")
             return
         }
+
         stop()
+        lastPlayTime = now
         val appContext = context.applicationContext
         val uri = Uri.parse("android.resource://${appContext.packageName}/$soundResId")
         try {
