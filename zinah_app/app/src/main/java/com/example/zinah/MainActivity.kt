@@ -239,7 +239,12 @@ class MainActivity : ComponentActivity() {
                                         horizontalAlignment = Alignment.Start
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("☪", fontSize = 28.sp, color = ZinahTheme.GoldBright)
+                                            Icon(
+                                                imageVector = Icons.Filled.Star,
+                                                contentDescription = null,
+                                                tint = ZinahTheme.GoldBright,
+                                                modifier = Modifier.size(28.dp)
+                                            )
                                             Spacer(modifier = Modifier.width(12.dp))
                                             Text(
                                                 "أذكار وأدعية",
@@ -418,51 +423,47 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
-                            // ===== Sound Selection Section =====
+                            // ===== Sound Selection Section (simplified) =====
                             item {
-                                var mediaPlayer by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
-
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                                     colors = CardDefaults.cardColors(containerColor = Color.White)
                                 ) {
-                                    Column(
-                                        modifier = Modifier.padding(16.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            "صوت التذكير",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 18.sp,
-                                            color = Color(0xFF2E7D32)
-                                        )
-                                        Spacer(modifier = Modifier.height(12.dp))
-                                        Text(
-                                            "تم تفعيل صوت 'صلي على محمد' بصوت بشري حقيقي",
-                                            fontSize = 14.sp,
-                                            color = Color.Gray,
-                                            textAlign = TextAlign.Center
-                                        )
-                                        Spacer(modifier = Modifier.height(12.dp))
-
-                                        Button(
-                                            onClick = {
-                                                try {
-                                                    mediaPlayer?.stop()
-                                                    mediaPlayer?.release()
-                                                    mediaPlayer = android.media.MediaPlayer.create(this@MainActivity, R.raw.sali_ala_mohammad).also { mp ->
-                                                        mp.setVolume(1.0f, 1.0f)
-                                                        mp.start()
-                                                        mp.setOnCompletionListener { mp.release() }
-                                                    }
-                                                } catch (e: Exception) {
-                                                    Toast.makeText(this@MainActivity, "خطأ في تشغيل الصوت", Toast.LENGTH_SHORT).show()
-                                                }
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD4AF37))
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                                .background(ZinahTheme.Sand),
+                                            contentAlignment = Alignment.Center
                                         ) {
-                                            Text("🔊 تجربة الصوت البشري", fontSize = 14.sp)
+                                            Icon(
+                                                imageVector = Icons.Filled.Notifications,
+                                                contentDescription = null,
+                                                tint = ZinahTheme.GoldDeep,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                "صوت التذكير",
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ZinahTheme.EmeraldDeep
+                                            )
+                                            Text(
+                                                "صلي على محمد - بصوت بشري",
+                                                fontSize = 12.sp,
+                                                color = ZinahTheme.InkMute
+                                            )
                                         }
                                     }
                                 }
@@ -470,23 +471,42 @@ class MainActivity : ComponentActivity() {
 
                             // ===== Stop Button =====
                             item {
+                                var isStopped by remember { mutableStateOf(false) }
                                 Button(
                                     onClick = {
-                                        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-                                        val intent = Intent(this@MainActivity, DhikrAlarmReceiver::class.java)
-                                        val pendingIntent = PendingIntent.getBroadcast(
-                                            this@MainActivity,
-                                            0,
-                                            intent,
-                                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                                        )
-                                        alarmManager.cancel(pendingIntent)
-                                        Toast.makeText(this@MainActivity, "تم إيقاف التذكيرات", Toast.LENGTH_SHORT).show()
+                                        try {
+                                            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                                            val intent = Intent(this@MainActivity, DhikrAlarmReceiver::class.java)
+                                            val pendingIntent = PendingIntent.getBroadcast(
+                                                this@MainActivity,
+                                                0,
+                                                intent,
+                                                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                                            )
+                                            alarmManager.cancel(pendingIntent)
+                                            isStopped = !isStopped
+                                            if (isStopped) {
+                                                Toast.makeText(this@MainActivity, "تم إيقاف التذكيرات", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                val interval = getSavedInterval()
+                                                scheduleExactDhikrAlarm(interval)
+                                                Toast.makeText(this@MainActivity, "تم إعادة التذكيرات", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } catch (e: Exception) {
+                                            Toast.makeText(this@MainActivity, "حدث خطأ", Toast.LENGTH_SHORT).show()
+                                        }
                                     },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
+                                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isStopped) ZinahTheme.Emerald else Color(0xFFD32F2F)
+                                    )
                                 ) {
-                                    Text("إيقاف التذكيرات", fontWeight = FontWeight.Bold)
+                                    Text(
+                                        if (isStopped) "إعادة تشغيل التذكيرات" else "إيقاف التذكيرات",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp
+                                    )
                                 }
                             }
 

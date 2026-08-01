@@ -7,27 +7,22 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/**
- * Full-screen adhan activity — simplified, stable version.
- * No blur, no infinite animations, no custom Canvas — just solid colors + gradient.
- */
 class AdhanActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,19 +39,18 @@ class AdhanActivity : ComponentActivity() {
             ?: "الصلاة"
 
         setContent {
-            AdhanScreen(
-                prayerName = prayerName,
-                onStop = { stopAdhanAndFinish() }
-            )
+            AdhanScreen(prayerName = prayerName, onStop = { stopAdhanAndFinish() })
         }
     }
 
     private fun stopAdhanAndFinish() {
-        val stopIntent = Intent(this, AdhanForegroundService::class.java).apply {
-            action = AdhanForegroundService.ACTION_STOP
-        }
-        startService(stopIntent)
-        AdhanPlayer.stop()
+        try {
+            val stopIntent = Intent(this, AdhanForegroundService::class.java).apply {
+                action = AdhanForegroundService.ACTION_STOP
+            }
+            startService(stopIntent)
+            AdhanPlayer.stop()
+        } catch (e: Exception) {}
         finish()
     }
 }
@@ -65,7 +59,7 @@ class AdhanActivity : ComponentActivity() {
 private fun AdhanScreen(prayerName: String, onStop: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = ZinahTheme.EmeraldDarkest
+        color = Color(0xFF0B3D20)
     ) {
         Column(
             modifier = Modifier
@@ -74,9 +68,13 @@ private fun AdhanScreen(prayerName: String, onStop: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Top: crescent + label
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("☪", fontSize = 72.sp, color = ZinahTheme.GoldBright)
+                Icon(
+                    imageVector = Icons.Filled.Star,
+                    contentDescription = null,
+                    tint = Color(0xFFFFD700),
+                    modifier = Modifier.size(72.dp)
+                )
                 Spacer(modifier = Modifier.height(20.dp))
                 Text(
                     "حان وقت الصلاة",
@@ -86,94 +84,57 @@ private fun AdhanScreen(prayerName: String, onStop: () -> Unit) {
                 )
             }
 
-            // Center: prayer name card
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(32.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color.White.copy(alpha = 0.08f)
-                ),
-                elevation = CardDefaults.cardElevation(0.dp)
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.1f))
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(40.dp),
+                    modifier = Modifier.fillMaxWidth().padding(32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        "الأذان",
-                        fontSize = 16.sp,
-                        color = ZinahTheme.GoldBright,
-                        fontWeight = FontWeight.Medium,
-                        letterSpacing = 4.sp
-                    )
+                    Text("الأذان", fontSize = 16.sp, color = Color(0xFFFFD700),
+                        fontWeight = FontWeight.Medium)
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         "صلاة $prayerName",
-                        fontSize = 56.sp,
+                        fontSize = 48.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
                         textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    // Gold divider
                     Box(
                         modifier = Modifier
-                            .width(80.dp)
-                            .height(2.dp)
-                            .background(ZinahTheme.GoldBright)
+                            .width(60.dp).height(2.dp)
+                            .background(Color(0xFFFFD700))
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        "حي على الصلاة",
-                        fontSize = 18.sp,
-                        color = ZinahTheme.GoldBright,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Text("حي على الصلاة", fontSize = 18.sp, color = Color(0xFFFFD700))
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        "حي على الفلاح",
-                        fontSize = 18.sp,
-                        color = ZinahTheme.GoldBright,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Text("حي على الفلاح", fontSize = 18.sp, color = Color(0xFFFFD700))
                 }
             }
 
-            // Bottom: STOP button
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Button(
                     onClick = onStop,
-                    modifier = Modifier.size(140.dp),
+                    modifier = Modifier.size(130.dp),
                     shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = ZinahTheme.GoldBright
-                    ),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD700)),
                     contentPadding = PaddingValues(0.dp)
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Filled.Pause,
-                            contentDescription = "إيقاف",
-                            tint = ZinahTheme.EmeraldDeep,
-                            modifier = Modifier.size(44.dp)
-                        )
+                        Icon(Icons.Filled.Pause, contentDescription = "إيقاف",
+                            tint = Color(0xFF0B3D20), modifier = Modifier.size(40.dp))
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "إيقاف",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = ZinahTheme.EmeraldDeep
-                        )
+                        Text("إيقاف", fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0B3D20))
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    "يتم تشغيل الأذان الآن",
-                    fontSize = 13.sp,
-                    color = Color.White.copy(alpha = 0.6f)
-                )
+                Text("يتم تشغيل الأذان الآن",
+                    fontSize = 13.sp, color = Color.White.copy(alpha = 0.6f))
             }
         }
     }
