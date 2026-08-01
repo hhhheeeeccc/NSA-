@@ -83,20 +83,10 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
         }
         context.startService(overlayIntent)
 
-        // Play the sound ONCE using MediaPlayer (the channel is silent, so no double playback)
+        // Play the sound ONCE using AdhanPlayer singleton (prevents double playback
+        // if multiple alarms fire at the same time)
         try {
-            val mediaPlayer = MediaPlayer().apply {
-                setDataSource(context, soundUri)
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
-                prepare()
-                start()
-                setOnCompletionListener { release() }
-            }
+            AdhanPlayer.play(context, soundResId = R.raw.sali_ala_mohammad)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to play dhikr sound", e)
         }

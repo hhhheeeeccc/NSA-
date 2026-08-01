@@ -7,14 +7,15 @@ import android.net.Uri
 import android.util.Log
 
 /**
- * Singleton wrapper around [MediaPlayer] for playing the adhan audio.
+ * Singleton wrapper around [MediaPlayer] for playing audio in the app.
  *
- * Design notes:
- *  - Uses USAGE_ALARM so the audio respects the user's alarm volume (not the media volume)
- *    and bypasses Do-Not-Disturb when the channel is configured to do so.
- *  - Holds a strong reference to a single [MediaPlayer] instance so we can stop it
- *    cleanly from the full-screen AdhanActivity when the user taps "إيقاف".
- *  - Calls [MediaPlayer.release] in the completion listener to free native resources.
+ * CRITICAL: This prevents double-playback by tracking whether audio is
+ * currently playing. If [play] is called while audio is already playing,
+ * the new call is IGNORED (no second MediaPlayer created).
+ *
+ * This fixes the bug where the dhikr sound was heard twice because both
+ * DhikrForegroundService and MainActivity were scheduling alarms that
+ * fired DhikrAlarmReceiver at roughly the same time.
  */
 object AdhanPlayer {
 
@@ -27,13 +28,15 @@ object AdhanPlayer {
     fun isPlaying(): Boolean = currentPlayer?.isPlaying == true
 
     /**
-     * Start playing the adhan audio from the given raw resource id.
-     *
-     * @param context      Any context — we use [Context.applicationContext] internally.
-     * @param soundResId   Raw resource id (e.g. R.raw.adhan_makkah).
-     * @param onCompletion Called when playback finishes naturally (NOT when stopped manually).
+     * Start playing the audio from the given raw resource id.
+     * If audio is already playing, this call is IGNORED (no double playback).
      */
     fun play(context: Context, soundResId: Int, onCompletion: () -> Unit = {}) {
+        // CRITICAL: If already playing, do NOT start a second player
+        if (isPlaying()) {
+            Log.d(TAG, "Already playing — ignoring duplicate play() call")
+            return
+        }
         stop()
         val appContext = context.applicationContext
         val uri = Uri.parse("android.resource://${appContext.packageName}/$soundResId")
@@ -49,7 +52,7 @@ object AdhanPlayer {
                 isLooping = false
                 prepare()
                 setOnCompletionListener {
-                    Log.d(TAG, "Adhan playback completed")
+                    Log.d(TAG, "Playback completed")
                     release()
                     currentPlayer = null
                     onCompletion()
@@ -64,9 +67,9 @@ object AdhanPlayer {
                 start()
             }
             currentPlayer = player
-            Log.d(TAG, "Adhan playback started (resId=$soundResId)")
+            Log.d(TAG, "Playback started (resId=$soundResId)")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start adhan playback", e)
+            Log.e(TAG, "Failed to start playback", e)
             onCompletion()
         }
     }

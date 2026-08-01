@@ -93,8 +93,15 @@ class DhikrForegroundService : Service() {
     }
 
     private fun scheduleDhikrAlarm() {
-        // Delegate to AlarmManager via AlarmScheduler
-        AlarmScheduler.schedule(this)
+        // IMPORTANT: Do NOT schedule the dhikr alarm here.
+        // The alarm is already scheduled by:
+        //   - MainActivity.scheduleExactDhikrAlarm() when the user picks an interval
+        //   - DhikrAlarmReceiver.scheduleNextAlarm() when the previous alarm fires
+        //   - BootReceiver after device reboot
+        // If we also schedule it here, the user hears the sound TWICE because two
+        // alarms fire at roughly the same time.
+        //
+        // AlarmScheduler.schedule(this)  // <-- REMOVED
     }
 
     private fun scheduleKeepAliveAlarm() {
