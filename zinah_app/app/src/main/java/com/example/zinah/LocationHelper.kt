@@ -6,7 +6,11 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Geocoder
 import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.LocationServices
@@ -21,25 +25,23 @@ import java.util.Locale
 import kotlin.coroutines.resume
 
 /**
- * Wraps FusedLocationProviderClient to fetch the current GPS location.
+ * Robust location fetcher with multiple fallbacks:
  *
- * Safety notes (this is what previously caused crashes when the user tapped "GPS"):
- *  1. We check Google Play Services availability BEFORE touching FusedLocationProviderClient
- *     — on devices without Play Services (Huawei / sideloaded ROMs) calling it throws
- *     a runtime exception that crashes the app.
- *  2. We catch ALL Throwable (not just Exception) — some Play Services failures come back
- *     as Error subtypes that bypass Exception.
- *  3. All callbacks resume the coroutine with `null` on failure (never throw) so the
- *     surrounding try/catch can convert it to [Result.Error].
- *  4. The Geocoder call is wrapped in its own try/catch — it can throw IOException on
- *     devices without a network connection, and on Android 13+ it requires a background
- *     thread (we're already on Dispatchers.IO so this is fine).
- *  5. We use `WithContext(Dispatchers.IO)` so none of this runs on the main thread.
+ *  1. Check app permission
+ *  2. Check device location services are enabled (different from app permission!)
+ *     — many users enable permission but forget to turn on GPS in Android settings
+ *  3. Try FusedLocationProviderClient (fastest, most accurate)
+ *  4. If that fails, fall back to legacy LocationManager (GPS_PROVIDER / NETWORK_PROVIDER)
+ *     — this works even without Google Play Services
+ *  5. As a last resort, return the last known location from any provider
+ *
+ * All callbacks resume with `null` on failure (never throw).
+ * All paths are wrapped in try/catch (Throwable) so the app never crashes.
  */
 object LocationHelper {
 
     private const val TAG = "LocationHelper"
-    private const val LOCATION_TIMEOUT_MS = 15_000L
+    private const val LOCATION_TIMEOUT_MS = 20_000L
 
     sealed class Result {
         data class Success(val latitude: Double, val longitude: Double, val label: String) : Result()
@@ -57,10 +59,29 @@ object LocationHelper {
     }
 
     /**
-     * Check whether Google Play Services is available on this device.
-     * FusedLocationProviderClient depends on Play Services — calling it on a device
-     * that doesn't have Play Services will throw a runtime exception.
+     * Check whether the device's location services are enabled in Android settings.
+     * This is DIFFERENT from app permission — even with permission granted, the user
+     * can disable location globally in Settings → Location.
+     *
+     * On Android 28+ we use Settings.FusedLocationUtil.isLocationModeAvailable.
+     * On older versions we check GPS_PROVIDER and NETWORK_PROVIDER directly.
      */
+    fun isLocationEnabled(context: Context): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                lm.isLocationEnabled
+            } else {
+                val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "isLocationEnabled check failed: ${e.message}")
+            true // assume enabled — let the actual call fail later if it's truly disabled
+        }
+    }
+
     private fun isPlayServicesAvailable(context: Context): Boolean {
         return try {
             val status = GoogleApiAvailability.getInstance()
@@ -78,19 +99,51 @@ object LocationHelper {
         if (!hasLocationPermission(context)) {
             return@withContext Result.Error("إذن الموقع غير ممنوح — فعّل الإذن من الإعدادات")
         }
-        if (!isPlayServicesAvailable(context)) {
-            return@withContext Result.Error("خدمات Google Play غير متوفرة على هذا الجهاز — استخدم اختيار المدينة يدويًا")
+
+        if (!isLocationEnabled(context)) {
+            return@withContext Result.Error(
+                "خدمات الموقع معطّلة في الجهاز. افتح إعدادات الأندرويد → الموقع → فعّل الموقع"
+            )
         }
 
-        val client = try {
-            LocationServices.getFusedLocationProviderClient(context)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get FusedLocationProviderClient", e)
-            return@withContext Result.Error("تعذّر الوصول إلى خدمات الموقع: ${e.message}")
+        // 1) Try FusedLocationProviderClient if Play Services is available
+        if (isPlayServicesAvailable(context)) {
+            val fusedResult = tryFusedLocation(context)
+            if (fusedResult is Result.Success) {
+                return@withContext fusedResult
+            }
+            Log.w(TAG, "FusedLocation failed, falling back to LocationManager")
+        } else {
+            Log.w(TAG, "Play Services not available, using LocationManager directly")
         }
 
-        // 1) Try the fast path: last known location (no GPS wake-up needed)
-        try {
+        // 2) Fallback: legacy LocationManager (works without Play Services)
+        val legacyResult = tryLegacyLocationManager(context)
+        if (legacyResult is Result.Success) {
+            return@withContext legacyResult
+        }
+
+        // 3) Last resort: any cached location from any provider
+        val cached = tryCachedLocation(context)
+        if (cached is Result.Success) {
+            return@withContext cached
+        }
+
+        Result.Error(
+            "تعذّر تحديد الموقع. تأكد من:\n" +
+            "1. تفعيل الموقع في إعدادات الجهاز\n" +
+            "2. السماح بالوصول للموقع للتطبيق\n" +
+            "3. وجود اتصال إنترنت\n" +
+            "أو استخدم اختيار المدينة يدويًا"
+        )
+    }
+
+    @SuppressLint("MissingPermission")
+    private suspend fun tryFusedLocation(context: Context): Result {
+        return try {
+            val client = LocationServices.getFusedLocationProviderClient(context)
+
+            // Fast path: last known location
             val last = withTimeoutOrNull(3_000L) {
                 suspendCancellableCoroutine<Location?> { cont ->
                     try {
@@ -103,25 +156,18 @@ object LocationHelper {
                                 try { if (cont.isActive) cont.resume(null) } catch (_: Exception) {}
                             }
                     } catch (e: SecurityException) {
-                        Log.e(TAG, "SecurityException in getLastLocation", e)
                         try { if (cont.isActive) cont.resume(null) } catch (_: Exception) {}
                     } catch (e: Exception) {
-                        Log.e(TAG, "Exception in getLastLocation", e)
                         try { if (cont.isActive) cont.resume(null) } catch (_: Exception) {}
                     }
                 }
             }
             if (last != null && (last.latitude != 0.0 || last.longitude != 0.0)) {
                 val label = reverseGeocode(context, last.latitude, last.longitude)
-                return@withContext Result.Success(last.latitude, last.longitude, label)
+                return Result.Success(last.latitude, last.longitude, label)
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "getLastLocation path failed: ${e.message}")
-            // Continue to slow path
-        }
 
-        // 2) Slow path: request a fresh single location update
-        try {
+            // Slow path: fresh location request
             val fresh = withTimeoutOrNull(LOCATION_TIMEOUT_MS) {
                 suspendCancellableCoroutine<Location?> { cont ->
                     try {
@@ -134,40 +180,115 @@ object LocationHelper {
                                 try { if (cont.isActive) cont.resume(null) } catch (_: Exception) {}
                             }
                     } catch (e: SecurityException) {
-                        Log.e(TAG, "SecurityException in getCurrentLocation", e)
                         try { if (cont.isActive) cont.resume(null) } catch (_: Exception) {}
                     } catch (e: Exception) {
-                        Log.e(TAG, "Exception in getCurrentLocation", e)
                         try { if (cont.isActive) cont.resume(null) } catch (_: Exception) {}
                     }
                 }
             }
             if (fresh != null && (fresh.latitude != 0.0 || fresh.longitude != 0.0)) {
                 val label = reverseGeocode(context, fresh.latitude, fresh.longitude)
-                return@withContext Result.Success(fresh.latitude, fresh.longitude, label)
+                return Result.Success(fresh.latitude, fresh.longitude, label)
             }
-            return@withContext Result.Error(
-                "تعذّر تحديد الموقع — تأكد من تفعيل GPS وإعطاء الإذن، أو استخدم اختيار المدينة يدويًا"
-            )
+
+            Result.Error("FusedLocation returned null")
         } catch (e: Throwable) {
-            Log.e(TAG, "Fresh location fetch failed", e)
-            return@withContext Result.Error("خطأ في تحديد الموقع: ${e.message ?: "سبب غير معروف"}")
+            Log.e(TAG, "tryFusedLocation crashed", e)
+            Result.Error("FusedLocation crashed: ${e.message}")
         }
     }
 
     /**
-     * Reverse-geocode (latitude, longitude) → "City, Country" using Android's built-in Geocoder.
-     *
-     * On Android 13+ (API 33+) the synchronous [Geocoder.getFromLocation] is deprecated
-     * and may return null even on success — we still try it first because it works
-     * synchronously and is faster. If it returns null or throws, we fall back to
-     * the coordinates string.
+     * Legacy fallback using android.location.LocationManager.
+     * Works on ALL Android devices including those without Google Play Services.
      */
+    @SuppressLint("MissingPermission")
+    private suspend fun tryLegacyLocationManager(context: Context): Result {
+        return try {
+            val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+
+            // Pick the best available provider
+            val provider = when {
+                lm.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
+                lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
+                lm.isProviderEnabled(LocationManager.PASSIVE_PROVIDER) -> LocationManager.PASSIVE_PROVIDER
+                else -> return Result.Error("No location provider enabled")
+            }
+            Log.d(TAG, "Using legacy provider: $provider")
+
+            // Try last known location from this provider first (instant)
+            val lastKnown = lm.getLastKnownLocation(provider)
+            if (lastKnown != null && (lastKnown.latitude != 0.0 || lastKnown.longitude != 0.0)) {
+                val label = reverseGeocode(context, lastKnown.latitude, lastKnown.longitude)
+                return Result.Success(lastKnown.latitude, lastKnown.longitude, label)
+            }
+
+            // Request a single fresh update with timeout
+            val fresh = withTimeoutOrNull(LOCATION_TIMEOUT_MS) {
+                suspendCancellableCoroutine<Location?> { cont ->
+                    val listener = object : LocationListener {
+                        override fun onLocationChanged(location: Location) {
+                            try {
+                                if (cont.isActive) cont.resume(location)
+                            } catch (_: Exception) {}
+                            try { lm.removeUpdates(this) } catch (_: Exception) {}
+                        }
+                        override fun onStatusChanged(p: String?, s: Int, b: Bundle?) {}
+                        override fun onProviderEnabled(p: String) {}
+                        override fun onProviderDisabled(p: String) {
+                            try { if (cont.isActive) cont.resume(null) } catch (_: Exception) {}
+                        }
+                    }
+                    try {
+                        lm.requestSingleUpdate(provider, listener, android.os.Looper.getMainLooper())
+                    } catch (e: SecurityException) {
+                        try { if (cont.isActive) cont.resume(null) } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        try { if (cont.isActive) cont.resume(null) } catch (_: Exception) {}
+                    }
+                }
+            }
+            if (fresh != null && (fresh.latitude != 0.0 || fresh.longitude != 0.0)) {
+                val label = reverseGeocode(context, fresh.latitude, fresh.longitude)
+                return Result.Success(fresh.latitude, fresh.longitude, label)
+            }
+
+            Result.Error("Legacy LocationManager returned null")
+        } catch (e: Throwable) {
+            Log.e(TAG, "tryLegacyLocationManager crashed", e)
+            Result.Error("Legacy crashed: ${e.message}")
+        }
+    }
+
+    /**
+     * Absolute last resort: grab any cached location from any provider.
+     */
+    @SuppressLint("MissingPermission")
+    private suspend fun tryCachedLocation(context: Context): Result {
+        return try {
+            val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            val providers = lm.allProviders
+            for (provider in providers) {
+                try {
+                    val loc = lm.getLastKnownLocation(provider)
+                    if (loc != null && (loc.latitude != 0.0 || loc.longitude != 0.0)) {
+                        val label = reverseGeocode(context, loc.latitude, loc.longitude)
+                        return Result.Success(loc.latitude, loc.longitude, label)
+                    }
+                } catch (e: SecurityException) {
+                    continue
+                }
+            }
+            Result.Error("No cached location available")
+        } catch (e: Throwable) {
+            Result.Error("Cached crashed: ${e.message}")
+        }
+    }
+
     private fun reverseGeocode(context: Context, lat: Double, lon: Double): String {
         return try {
             val geocoder = Geocoder(context, Locale.getDefault())
             val addresses = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                // Use the async API on Android 13+ via blocking wrapper
                 suspendCancellableCoroutineWithGeocoder(geocoder, lat, lon)
             } else {
                 @Suppress("DEPRECATION")
@@ -187,10 +308,6 @@ object LocationHelper {
         }
     }
 
-    /**
-     * Wrapper around the Android 13+ async Geocoder API that blocks the calling coroutine
-     * until the result is available (or a 3-second timeout fires).
-     */
     private fun suspendCancellableCoroutineWithGeocoder(
         geocoder: Geocoder,
         lat: Double,

@@ -522,7 +522,7 @@ fun PrayerTimesScreen() {
                 }
             }
 
-            // ===== Error message =====
+            // ===== Error message + action button =====
             if (errorMessage != null) {
                 item {
                     Card(
@@ -530,12 +530,47 @@ fun PrayerTimesScreen() {
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE))
                     ) {
-                        Text(
-                            errorMessage!!,
-                            modifier = Modifier.padding(16.dp),
-                            color = Color(0xFFB71C1C),
-                            fontSize = 13.sp
-                        )
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                errorMessage!!,
+                                color = Color(0xFFB71C1C),
+                                fontSize = 13.sp
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            // Button to open location settings
+                            OutlinedButton(
+                                onClick = {
+                                    try {
+                                        val intent = android.content.Intent(
+                                            android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS
+                                        ).apply {
+                                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        // Fallback: open app settings
+                                        try {
+                                            val intent = android.content.Intent(
+                                                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS
+                                            ).apply {
+                                                data = android.net.Uri.fromParts("package", context.packageName, null)
+                                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                            context.startActivity(intent)
+                                        } catch (e2: Exception) {}
+                                    }
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = Color(0xFFB71C1C)
+                                )
+                            ) {
+                                Icon(Icons.Filled.LocationOn, contentDescription = null,
+                                    modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("فتح إعدادات الموقع", fontSize = 12.sp)
+                            }
+                        }
                     }
                 }
             }
