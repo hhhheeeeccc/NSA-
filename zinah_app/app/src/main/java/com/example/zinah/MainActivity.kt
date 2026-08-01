@@ -22,6 +22,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -109,27 +112,72 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    Column {
-                        TopAppBar(
-                            title = {
-                                Text(
-                                    "تطبيق زينة للأذكار",
-                                    modifier = Modifier.fillMaxWidth(),
-                                    textAlign = TextAlign.Center,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            },
-                            colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                titleContentColor = Color.White
-                            )
-                        )
+                    var selectedTab by remember { mutableStateOf(0) }
 
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
+                    // Read intent extra to allow prayer notification to deep-link into the prayer tab
+                    LaunchedEffect(Unit) {
+                        if (intent.getStringExtra("open_tab") == "prayer_times") {
+                            selectedTab = 1
+                        }
+                    }
+
+                    Scaffold(
+                        topBar = {
+                            TopAppBar(
+                                title = {
+                                    Text(
+                                        if (selectedTab == 0) "تطبيق زينة للأذكار" else "مواقيت الصلاة",
+                                        modifier = Modifier.fillMaxWidth(),
+                                        textAlign = TextAlign.Center,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                },
+                                colors = TopAppBarDefaults.topAppBarColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    titleContentColor = Color.White
+                                )
+                            )
+                        },
+                        bottomBar = {
+                            NavigationBar(
+                                containerColor = Color.White,
+                                contentColor = Color(0xFF2E7D32)
+                            ) {
+                                NavigationBarItem(
+                                    selected = selectedTab == 0,
+                                    onClick = { selectedTab = 0 },
+                                    icon = { Icon(Icons.Filled.MenuBook, contentDescription = "الأذكار") },
+                                    label = { Text("الأذكار", fontSize = 11.sp) }
+                                )
+                                NavigationBarItem(
+                                    selected = selectedTab == 1,
+                                    onClick = { selectedTab = 1 },
+                                    icon = { Icon(Icons.Filled.Schedule, contentDescription = "مواقيت الصلاة") },
+                                    label = { Text("مواقيت الصلاة", fontSize = 11.sp) }
+                                )
+                            }
+                        }
+                    ) { innerPadding ->
+                        when (selectedTab) {
+                            0 -> AdhkarContent(modifier = Modifier.padding(innerPadding))
+                            1 -> Box(modifier = Modifier.padding(innerPadding)) {
+                                PrayerTimesScreen()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    private fun AdhkarContent(modifier: Modifier = Modifier) {
+        LazyColumn(
+            modifier = modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
                             // ===== Settings Card =====
                             item {
                                 var selectedInterval by remember { mutableStateOf(getSavedInterval()) }
@@ -507,10 +555,6 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
-                    }
-                }
-            }
-        }
     }
 
     private fun scheduleExactDhikrAlarm(intervalMinutes: Long) {

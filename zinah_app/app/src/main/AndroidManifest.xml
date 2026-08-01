@@ -11,10 +11,14 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Prayer times location permissions -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <application
         android:name=".ZinahApplication"
@@ -47,7 +51,18 @@
             android:taskAffinity=""
             android:launchMode="singleTask" />
 
-        <!-- Foreground Service for guaranteed background execution -->
+        <!-- Full-screen adhan activity, shown at prayer time -->
+        <activity
+            android:name=".AdhanActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Zinah"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleTask" />
+
+        <!-- Foreground Service for guaranteed background execution (dhikr) -->
         <service
             android:name=".DhikrForegroundService"
             android:exported="false"
@@ -56,6 +71,12 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="zikr_notifications" />
         </service>
+
+        <!-- Foreground Service that plays the adhan audio in the background -->
+        <service
+            android:name=".AdhanForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <service
             android:name=".DhikrOverlayService"
@@ -73,6 +94,11 @@
 
         <receiver
             android:name=".DhikrAlarmReceiver"
+            android:exported="false" />
+
+        <!-- Receiver fired at each prayer time -->
+        <receiver
+            android:name=".PrayerAlarmReceiver"
             android:exported="false" />
 
         <!-- Keep-alive receiver to restart service -->
