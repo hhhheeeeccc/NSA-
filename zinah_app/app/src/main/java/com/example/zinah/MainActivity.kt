@@ -4,6 +4,9 @@ import android.Manifest
 import android.app.AlarmManager
 import android.net.Uri
 import android.os.PowerManager
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.res.Resources
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -86,8 +89,13 @@ class MainActivity : ComponentActivity() {
         checkExactAlarmPermission()
         requestSystemAlertWindowPermission()
         requestBatteryOptimization()
+        // Initialize selected sound
+        val prefs = getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
+        val savedSound = prefs.getInt("soundChoice", 0)
         // Start foreground service for guaranteed background execution
         DhikrForegroundService.start(this)
+        // Update notification channel with saved sound
+        updateNotificationSound(savedSound)
 
         setContent {
             MaterialTheme(
@@ -225,6 +233,95 @@ class MainActivity : ComponentActivity() {
                                             color = Color(0xFF2E7D32),
                                             fontWeight = FontWeight.Bold
                                         )
+                                    }
+                                }
+                            }
+
+                            // ===== Sound Selection Section =====
+                            item {
+                                val soundNames = listOf("هادئ", "قوي", "نغمتان", "عميق")
+                                val soundResIds = listOf(
+                                    R.raw.dhikr_gentle,
+                                    R.raw.dhikr_strong,
+                                    R.raw.dhikr_double,
+                                    R.raw.dhikr_deep
+                                )
+                                var selectedSound by remember { mutableIntStateOf(0) }
+                                var mediaPlayer by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(16.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            "صوت الإشعار",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 18.sp,
+                                            color = Color(0xFF2E7D32)
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Text(
+                                            "اختر صوت التذكير",
+                                            fontSize = 14.sp,
+                                            color = Color.Gray
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceEvenly
+                                        ) {
+                                            soundNames.forEachIndexed { index, name ->
+                                                Button(
+                                                    onClick = {
+                                                        selectedSound = index
+                                                        val prefs = getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
+                                                        with(prefs.edit()) {
+                                                            putInt("soundChoice", index)
+                                                            apply()
+                                                        }
+                                                        // Update notification channel with new sound
+                                                        updateNotificationSound(index)
+                                                        Toast.makeText(this@MainActivity, "تم اختيار الصوت: $name", Toast.LENGTH_SHORT).show()
+                                                    },
+                                                    modifier = Modifier.width(80.dp),
+                                                    contentPadding = PaddingValues(8.dp),
+                                                    colors = if (selectedSound == index) {
+                                                        ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                                                    } else {
+                                                        ButtonDefaults.buttonColors(containerColor = Color(0xFFE0E0E0), contentColor = Color.Black)
+                                                    }
+                                                ) {
+                                                    Text(name, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        Button(
+                                            onClick = {
+                                                try {
+                                                    mediaPlayer?.stop()
+                                                    mediaPlayer?.release()
+                                                    mediaPlayer = android.media.MediaPlayer.create(this@MainActivity, soundResIds[selectedSound]).also { mp ->
+                                                        mp.setVolume(1.0f, 1.0f)
+                                                        mp.start()
+                                                        mp.setOnCompletionListener { mp.release() }
+                                                    }
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(this@MainActivity, "خطأ في تشغيل الصوت", Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF43A047))
+                                        ) {
+                                            Text("🔊 معاينة الصوت", fontSize = 14.sp)
+                                        }
                                     }
                                 }
                             }
@@ -501,6 +598,44 @@ class MainActivity : ComponentActivity() {
                 val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
                 startActivity(intent)
             }
+        }
+    }
+
+    private fun updateNotificationSound(soundIndex: Int) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            val channelId = "zinah_dhikr_channel_exact"
+            
+            val soundResId = when (soundIndex) {
+                0 -> R.raw.dhikr_gentle
+                1 -> R.raw.dhikr_strong
+                2 -> R.raw.dhikr_double
+                3 -> R.raw.dhikr_deep
+                else -> R.raw.dhikr_gentle
+            }
+            
+            val soundUri = "android.resource://$packageName/$soundResId"
+            
+            val channel = NotificationChannel(
+                channelId,
+                "إشعارات الأذكار المباشرة",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "قناة إشعارات تطبيق زينة"
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 200, 100, 200, 100, 200)
+                lockscreenVisibility = 1
+                setBypassDnd(true)
+                setShowBadge(true)
+                setSound(
+                    android.net.Uri.parse(soundUri),
+                    android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+            }
+            notificationManager.createNotificationChannel(channel)
         }
     }
 

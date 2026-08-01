@@ -10,6 +10,8 @@ import android.content.Intent
 import android.os.Build
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import android.media.AudioAttributes
+import android.media.MediaPlayer
 
 class DhikrAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -32,6 +34,16 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channelId = "zinah_dhikr_channel_exact"
 
+        val soundChoice = sharedPref.getInt("soundChoice", 0)
+        val soundResId = when (soundChoice) {
+            0 -> R.raw.dhikr_gentle
+            1 -> R.raw.dhikr_strong
+            2 -> R.raw.dhikr_double
+            3 -> R.raw.dhikr_deep
+            else -> R.raw.dhikr_gentle
+        }
+        val soundUri = android.net.Uri.parse("android.resource://${context.packageName}/$soundResId")
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
@@ -44,6 +56,13 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
                 lockscreenVisibility = 1
                 setBypassDnd(true)
                 setShowBadge(true)
+                setSound(
+                    soundUri,
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
             }
             notificationManager.createNotificationChannel(channel)
         }
@@ -82,7 +101,8 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setStyle(NotificationCompat.BigTextStyle().bigText(randomDhikr))
             .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setSound(soundUri)
+            .setDefaults(0)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
