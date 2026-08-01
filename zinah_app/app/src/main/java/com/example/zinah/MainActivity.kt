@@ -26,16 +26,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -134,7 +131,7 @@ class MainActivity : ComponentActivity() {
                                     ) {
                                         if (selectedTab == 0) {
                                             Icon(
-                                                imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                                                imageVector = Icons.Filled.Star,
                                                 contentDescription = null,
                                                 tint = ZinahTheme.GoldBright,
                                                 modifier = Modifier.size(22.dp)
@@ -174,8 +171,8 @@ class MainActivity : ComponentActivity() {
                                     onClick = { selectedTab = 0 },
                                     icon = {
                                         Icon(
-                                            imageVector = if (selectedTab == 0) Icons.AutoMirrored.Filled.MenuBook
-                                                          else Icons.AutoMirrored.Outlined.MenuBook,
+                                            imageVector = if (selectedTab == 0) Icons.Filled.Star
+                                                          else Icons.Filled.Star,
                                             contentDescription = "الأذكار"
                                         )
                                     },
@@ -192,7 +189,7 @@ class MainActivity : ComponentActivity() {
                                     icon = {
                                         Icon(
                                             imageVector = if (selectedTab == 1) Icons.Filled.Schedule
-                                                          else Icons.Outlined.Schedule,
+                                                          else Icons.Filled.Schedule,
                                             contentDescription = "مواقيت الصلاة"
                                         )
                                     },

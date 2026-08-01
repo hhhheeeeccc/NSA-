@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.zinah"
         minSdk = 24
         targetSdk = 34
-        versionCode = 14
-        versionName = "2.4"
+        versionCode = 15
+        versionName = "2.5"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -38,14 +38,10 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    // Material icons extended (for BottomNavigation + prayer icons)
     implementation("androidx.compose.material:material-icons-extended")
 
     // Coroutines for async API calls
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-
-    // OkHttp for Aladhan API requests
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Play Services Location for GPS-based prayer times
     implementation("com.google.android.gms:play-services-location:21.0.1")

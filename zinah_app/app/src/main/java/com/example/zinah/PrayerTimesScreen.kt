@@ -6,7 +6,6 @@ import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -633,10 +632,10 @@ private fun PrayerCard(
     }
     val icon = when (prayer) {
         PrayerType.FAJR -> Icons.Filled.Star
-        PrayerType.DHUHR -> Icons.Filled.WbSunny
-        PrayerType.ASR -> Icons.Filled.WbSunny
+        PrayerType.DHUHR -> Icons.Filled.Star
+        PrayerType.ASR -> Icons.Filled.Star
         PrayerType.MAGHRIB -> Icons.Filled.Star
-        PrayerType.ISHA -> Icons.Filled.Bedtime
+        PrayerType.ISHA -> Icons.Filled.Star
     }
 
     Card(
