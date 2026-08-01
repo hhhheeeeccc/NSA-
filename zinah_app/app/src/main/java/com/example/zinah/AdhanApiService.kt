@@ -83,8 +83,8 @@ object AdhanApiService {
 
             val responseCode = connection.responseCode
             if (responseCode != 200) {
-                Log.e(TAG, "HTTP error: $responseCode")
-                return Result.Error("فشل الاتصال بالخدمة: HTTP $responseCode")
+                Log.e(TAG, "خطأ في الاتصال: $responseCode")
+                return Result.Error("فشل الاتصال بالخدمة (رمز الخطأ: $responseCode)")
             }
 
             val body = connection.inputStream?.bufferedReader()?.use { it.readText() }

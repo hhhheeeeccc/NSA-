@@ -90,8 +90,8 @@ object PrayerTimePreferences {
     }
 
     fun getManualCity(context: Context): String =
-        prefs(context).getString("prayer_manual_city", "Makkah,Saudi Arabia")
-            ?: "Makkah,Saudi Arabia"
+        prefs(context).getString("prayer_manual_city", "مكة المكرمة,السعودية")
+            ?: "مكة المكرمة,السعودية"
 
     // ---- adhan sound selection ----
     fun getAdhanSoundIndex(context: Context): Int =

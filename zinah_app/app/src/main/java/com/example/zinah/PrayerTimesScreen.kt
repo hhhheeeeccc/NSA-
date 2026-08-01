@@ -244,7 +244,7 @@ fun PrayerTimesScreen() {
                                         containerColor = if (useGps) Color(0xFF2E7D32) else Color(0xFFE8F5E9),
                                         contentColor = if (useGps) Color.White else Color(0xFF2E7D32)
                                     )
-                                ) { Text("GPS", fontSize = 12.sp) }
+                                ) { Text("تلقائي", fontSize = 12.sp) }
                                 Button(
                                     onClick = {
                                         try {
@@ -268,6 +268,7 @@ fun PrayerTimesScreen() {
                                     value = manualCity,
                                     onValueChange = { manualCity = it },
                                     label = { Text("المدينة,الدولة") },
+                                    placeholder = { Text("مكة المكرمة,السعودية") },
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth(),
                                     trailingIcon = {
@@ -542,11 +543,11 @@ private fun safeGetUseManualCity(context: Context): Boolean = try {
 
 private fun safeGetManualCity(context: Context): String = try {
     PrayerTimePreferences.getManualCity(context)
-} catch (e: Throwable) { "Makkah,Saudi Arabia" }
+} catch (e: Throwable) { "مكة المكرمة,السعودية" }
 
 private fun safeGetCityName(context: Context): String = try {
     PrayerTimePreferences.getCityName(context)
-} catch (e: Throwable) { "—" }
+} catch (e: Throwable) { "مكة المكرمة" }
 
 private fun safeGetMethodIndex(context: Context): Int = try {
     PrayerTimePreferences.CALCULATION_METHODS.indexOfFirst {
@@ -569,8 +570,11 @@ private fun safeGetPrayerEnabled(context: Context, prayer: PrayerType): Boolean 
 // ===== Safe formatters — never throw =====
 
 private fun safeFormatTime(cal: java.util.Calendar): String = try {
-    val fmt = SimpleDateFormat("hh:mm a", Locale.US)
-    fmt.format(cal.time)
+    val fmt = SimpleDateFormat("hh:mm", Locale.US)
+    val timeStr = fmt.format(cal.time)
+    val hour24 = cal.get(java.util.Calendar.HOUR_OF_DAY)
+    val suffix = if (hour24 < 12) "ص" else "م"
+    "$timeStr $suffix"
 } catch (e: Exception) { "--:--" }
 
 private fun safeFormatRemaining(now: java.util.Calendar, target: java.util.Calendar): String {
@@ -637,7 +641,7 @@ private suspend fun doRefresh(
                 if (useGps) {
                     if (!LocationHelper.hasLocationPermission(context)) {
                         return@withContext AdhanApiService.Result.Error(
-                            "إذن الموقع غير ممنوح - اضغط GPS وامنح الإذن"
+                            "إذن الموقع غير ممنوح - اضغط تلقائي وامنح الإذن"
                         )
                     }
                     when (val loc = LocationHelper.getCurrentLocation(context)) {
