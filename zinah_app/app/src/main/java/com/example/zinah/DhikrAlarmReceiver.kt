@@ -35,14 +35,7 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
         val channelId = "zinah_dhikr_channel_exact"
         val sharedPref = context.getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
 
-        val soundChoice = sharedPref.getInt("soundChoice", 0)
-        val soundResId = when (soundChoice) {
-            0 -> R.raw.dhikr_gentle
-            1 -> R.raw.dhikr_strong
-            2 -> R.raw.dhikr_double
-            3 -> R.raw.dhikr_deep
-            else -> R.raw.dhikr_gentle
-        }
+        val soundResId = R.raw.sali_ala_mohammad
         val soundUri = android.net.Uri.parse("android.resource://${context.packageName}/$soundResId")
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -76,17 +69,17 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
 
         val randomDhikr = if (allItems.isNotEmpty()) allItems.random() else "سبحان الله وبحمده"
 
-        // Full-screen notification intent (appears on lock screen / side of screen)
-        val fullScreenIntent = Intent(context, NotificationActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        // Start the overlay service for the side logo
+        val overlayIntent = Intent(context, DhikrOverlayService::class.java).apply {
             putExtra("dhikr_text", randomDhikr)
         }
-        val fullScreenPendingIntent = PendingIntent.getActivity(
-            context, 0, fullScreenIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(overlayIntent)
+        } else {
+            context.startService(overlayIntent)
+        }
 
-        // Also open main app
+        // Also show a standard notification with the sound
         val openIntent = Intent(context, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
@@ -96,23 +89,17 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
         )
 
         val notification = NotificationCompat.Builder(context, channelId)
-            .setContentTitle("زينة - تذكير بذكر الله")
+            .setContentTitle("صلي على محمد")
             .setContentText(randomDhikr)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(randomDhikr))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setSound(soundUri)
-            .setDefaults(0)
-            .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
             .setContentIntent(openPendingIntent)
-            .setFullScreenIntent(fullScreenPendingIntent, true)
-            .setVibrate(longArrayOf(0, 200, 100, 200, 100, 200))
-            .setLights(android.graphics.Color.GREEN, 1000, 500)
             .build()
 
-        notificationManager.notify(System.currentTimeMillis().toInt(), notification)
+        notificationManager.notify(1001, notification)
     }
 
     private fun getCustomAdhkar(sharedPref: android.content.SharedPreferences): List<String> {
