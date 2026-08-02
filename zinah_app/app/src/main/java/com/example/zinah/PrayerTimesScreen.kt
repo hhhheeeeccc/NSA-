@@ -52,6 +52,47 @@ fun PrayerTimesScreen() {
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showMethodDropdown by remember { mutableStateOf(false) }
 
+    // ===== Restore cached timings on first launch =====
+    // If we have a fresh cache, display it immediately so the user doesn't see
+    // "اضغط زر التحديث لجلب المواقيت" every time they reopen the app.
+    LaunchedEffect(Unit) {
+        var restoredTimings: PrayerTimings? = null
+        try {
+            val cachedJson = PrayerTimePreferences.getCachedTimingsJson(context)
+            if (cachedJson != null) {
+                restoredTimings = PrayerTimings.fromAladhanJson(
+                    cachedJson, java.util.Calendar.getInstance()
+                )
+                timings = restoredTimings
+                Log.d(TAG, "Restored cached prayer timings")
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "Failed to restore cached timings: ${e.message}")
+        }
+
+        // If feature is enabled, auto-refresh in the background:
+        //   - if no cache, fetch immediately
+        //   - if cache is stale (>12h or different date), fetch silently
+        //   - if cache is fresh, re-schedule alarms to be safe (alarms may
+        //     have been lost if user force-stopped the app)
+        if (PrayerTimePreferences.isFeatureEnabled(context)) {
+            if (!PrayerTimePreferences.isCacheFresh(context)) {
+                Log.d(TAG, "Cache stale or missing — auto-refreshing")
+                scope.launch {
+                    doRefresh(context, useGps, manualCity, methodIndex,
+                        { timings = it }, { isLoading = it },
+                        { errorMessage = it }, { cityName = it })
+                }
+            } else if (restoredTimings != null) {
+                try {
+                    PrayerTimeScheduler.scheduleAll(context, restoredTimings!!)
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Re-schedule from cache failed: ${e.message}")
+                }
+            }
+        }
+    }
+
     // Update countdown every 30 seconds
     var nowTick by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
@@ -120,6 +161,8 @@ fun PrayerTimesScreen() {
                                         } else {
                                             try { PrayerTimeScheduler.cancelAll(context) } catch (e: Exception) {
                                                 Log.e(TAG, "cancelAll failed", e) }
+                                            try { PrayerTimePreferences.clearCachedTimings(context) }
+                                            catch (e: Exception) { Log.w(TAG, "clearCache failed", e) }
                                             timings = null
                                         }
                                     } catch (e: Throwable) {
@@ -250,6 +293,13 @@ fun PrayerTimesScreen() {
                                         try {
                                             useGps = false
                                             PrayerTimePreferences.setUseManualCity(context, true)
+                                            // Auto-refresh if a city is already saved
+                                            val savedCity = PrayerTimePreferences.getManualCity(context)
+                                            if (savedCity.isNotBlank() && savedCity.contains(",")) {
+                                                scope.launch { doRefresh(context, false, savedCity,
+                                                    methodIndex, { timings = it }, { isLoading = it },
+                                                    { errorMessage = it }, { cityName = it }) }
+                                            }
                                         } catch (e: Throwable) {
                                             Log.e(TAG, "manual toggle failed", e)
                                         }
@@ -274,8 +324,21 @@ fun PrayerTimesScreen() {
                                     trailingIcon = {
                                         TextButton(onClick = {
                                             try {
-                                                PrayerTimePreferences.setManualCity(context, manualCity)
-                                                scope.launch { doRefresh(context, useGps, manualCity,
+                                                // Trim and validate the input
+                                                val trimmedCity = manualCity.trim()
+                                                if (trimmedCity.isBlank()) {
+                                                    errorMessage = "أدخل اسم المدينة"
+                                                    return@TextButton
+                                                }
+                                                if (!trimmedCity.contains(",")) {
+                                                    errorMessage = "الصيغة: المدينة,الدولة (مثال: الرياض,السعودية)"
+                                                    return@TextButton
+                                                }
+                                                // Save the city and immediately refresh
+                                                PrayerTimePreferences.setManualCity(context, trimmedCity)
+                                                manualCity = trimmedCity
+                                                errorMessage = null
+                                                scope.launch { doRefresh(context, false, trimmedCity,
                                                     methodIndex, { timings = it }, { isLoading = it },
                                                     { errorMessage = it }, { cityName = it }) }
                                             } catch (e: Throwable) {
@@ -636,7 +699,7 @@ private suspend fun doRefresh(
 
         var newCityName: String? = null
 
-        val result = try {
+        val result: AdhanApiService.Result<PrayerTimings> = try {
             withContext(Dispatchers.IO) {
                 if (useGps) {
                     if (!LocationHelper.hasLocationPermission(context)) {
@@ -659,10 +722,16 @@ private suspend fun doRefresh(
                             AdhanApiService.Result.Error(loc.message)
                     }
                 } else {
-                    if (manualCity.isBlank()) {
+                    val city = manualCity.trim()
+                    if (city.isBlank()) {
                         return@withContext AdhanApiService.Result.Error("أدخل اسم المدينة")
                     }
-                    AdhanApiService.fetchTimingsByCity(manualCity, method)
+                    if (!city.contains(",")) {
+                        return@withContext AdhanApiService.Result.Error(
+                            "الصيغة: المدينة,الدولة (مثال: الرياض,السعودية)"
+                        )
+                    }
+                    AdhanApiService.fetchTimingsByCity(city, method)
                 }
             }
         } catch (e: Throwable) {
@@ -671,24 +740,37 @@ private suspend fun doRefresh(
         }
 
         // Back on main thread — safe to update state
-        newCityName?.let { setCityName(it) }
+        try { newCityName?.let { setCityName(it) } } catch (_: Throwable) {}
 
-        when (result) {
-            is AdhanApiService.Result.Success -> {
-                setTimings(result.data)
-                try {
-                    PrayerTimeScheduler.scheduleAll(context, result.data)
-                } catch (e: Throwable) {
-                    Log.e(TAG, "scheduleAll failed", e)
+        try {
+            when (result) {
+                is AdhanApiService.Result.Success -> {
+                    setTimings(result.data)
+                    try {
+                        // Persist the raw JSON to SharedPreferences so that on the next
+                        // app launch the prayer times screen can restore immediately
+                        // without forcing the user to press "refresh".
+                        PrayerTimePreferences.saveCachedTimings(context, result.rawJson)
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "saveCachedTimings failed", e)
+                    }
+                    try {
+                        PrayerTimeScheduler.scheduleAll(context, result.data)
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "scheduleAll failed", e)
+                    }
+                    setError(null)
                 }
-                setError(null)
+                is AdhanApiService.Result.Error -> {
+                    setError(result.message)
+                    // Do NOT clear timings if we have a cache — better to show
+                    // stale timings than no timings at all.
+                }
             }
-            is AdhanApiService.Result.Error -> {
-                setError(result.message)
-                setTimings(null)
-            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "result handling crashed", e)
         }
-        setLoading(false)
+        try { setLoading(false) } catch (_: Throwable) {}
     } catch (e: Throwable) {
         Log.e(TAG, "doRefresh outer crashed", e)
         try {

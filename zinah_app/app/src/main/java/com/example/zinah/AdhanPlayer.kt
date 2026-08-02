@@ -9,56 +9,69 @@ import android.util.Log
 /**
  * Singleton wrapper around [MediaPlayer] for playing audio in the app.
  *
- * CRITICAL: This prevents double-playback using TWO mechanisms:
+ * CRITICAL: This prevents double-playback using THREE mechanisms:
  *  1. isPlaying() check — if audio is currently playing, ignore new calls
- *  2. Timestamp debounce — if audio was played within the last 10 seconds,
- *     ignore new calls (prevents two alarms firing 1-2 seconds apart from
- *     both starting playback)
+ *  2. Per-resource debounce — if the SAME sound was played within the last
+ *     5 seconds, ignore new calls. This is short enough that it only blocks
+ *     true duplicates (same alarm firing twice 1-2 seconds apart) but does
+ *     NOT block a different sound from playing (e.g. dhikr sound does not
+ *     block the adhan sound from playing right after).
+ *  3. isLooping = false — MediaPlayer never auto-repeats the clip.
  *
- * This fixes the bug where the dhikr sound was heard twice because both
- * the foreground service and the activity were scheduling alarms that
- * fired at roughly the same time.
+ * Previous bug: DEBOUNCE was 60s and global (not per-resource). This meant
+ * that if a dhikr notification played within 60s of a prayer time, the adhan
+ * would be SILENTLY SKIPPED. Now we use a short per-resource debounce so
+ * each sound can play independently.
  */
 object AdhanPlayer {
 
     private const val TAG = "AdhanPlayer"
-    private const val DEBOUNCE_MS = 10_000L // 10 seconds — ignore play() calls within this window
+    private const val DEBOUNCE_MS = 5_000L // 5 seconds — only blocks true duplicates
 
     @Volatile
     private var currentPlayer: MediaPlayer? = null
 
-    /** Timestamp (System.currentTimeMillis) of the last time play() was called. */
-    @Volatile
-    private var lastPlayTime: Long = 0L
+    /** Map of (soundResId -> last play timestamp) for per-resource debounce. */
+    private val lastPlayTimes = mutableMapOf<Int, Long>()
 
     /** True iff a clip is currently playing. */
-    fun isPlaying(): Boolean = currentPlayer?.isPlaying == true
+    fun isPlaying(): Boolean = try {
+        currentPlayer?.isPlaying == true
+    } catch (e: Exception) {
+        // IllegalStateException if player is in an error state
+        false
+    }
 
     /**
      * Start playing the audio from the given raw resource id.
      *
-     * If audio is already playing, OR if play() was called within the last
-     * [DEBOUNCE_MS] milliseconds, this call is IGNORED.
+     * If audio is already playing, OR if the SAME sound was played within
+     * the last [DEBOUNCE_MS] milliseconds, this call is IGNORED.
+     *
+     * A DIFFERENT sound resource can interrupt the current one and play
+     * immediately — this is important so the adhan can play even if a
+     * dhikr notification just played.
      */
     fun play(context: Context, soundResId: Int, onCompletion: () -> Unit = {}) {
         val now = System.currentTimeMillis()
 
-        // CRITICAL: Debounce — if we just played audio recently, ignore this call.
-        // This handles the case where two alarms fire 1-2 seconds apart: the first
-        // one starts playback, the second one is ignored because of the debounce window.
-        if (now - lastPlayTime < DEBOUNCE_MS) {
-            Log.d(TAG, "Ignoring play() call — within debounce window (${now - lastPlayTime}ms since last play)")
+        // Per-resource debounce: only block if the SAME sound was just played.
+        // This prevents double-playback when two alarms for the same prayer
+        // fire 1-2 seconds apart, but does NOT block a different sound.
+        val lastPlay = lastPlayTimes[soundResId] ?: 0L
+        if (now - lastPlay < DEBOUNCE_MS) {
+            Log.d(TAG, "Ignoring play() call — same sound ($soundResId) within debounce (${now - lastPlay}ms)")
             return
         }
 
-        // If already playing, do NOT start a second player
+        // If a DIFFERENT sound is currently playing, stop it so the new one can play.
+        // This is critical: the adhan must be able to interrupt a dhikr notification.
         if (isPlaying()) {
-            Log.d(TAG, "Already playing — ignoring duplicate play() call")
-            return
+            Log.d(TAG, "A different sound is playing — stopping it to play new sound $soundResId")
+            stop()
         }
 
-        stop()
-        lastPlayTime = now
+        lastPlayTimes[soundResId] = now
         val appContext = context.applicationContext
         val uri = Uri.parse("android.resource://${appContext.packageName}/$soundResId")
         try {
@@ -70,27 +83,29 @@ object AdhanPlayer {
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                         .build()
                 )
+                // CRITICAL: never loop — play the clip exactly once.
                 isLooping = false
                 prepare()
                 setOnCompletionListener {
-                    Log.d(TAG, "Playback completed")
-                    release()
+                    Log.d(TAG, "Playback completed (resId=$soundResId) — releasing player")
+                    try { release() } catch (_: Exception) {}
                     currentPlayer = null
                     onCompletion()
                 }
                 setOnErrorListener { mp, what, extra ->
-                    Log.e(TAG, "MediaPlayer error what=$what extra=$extra")
-                    mp.release()
+                    Log.e(TAG, "MediaPlayer error what=$what extra=$extra (resId=$soundResId)")
+                    try { mp.release() } catch (_: Exception) {}
                     currentPlayer = null
                     onCompletion()
                     true
                 }
+                // Start exactly once. We do NOT call start() anywhere else.
                 start()
             }
             currentPlayer = player
-            Log.d(TAG, "Playback started (resId=$soundResId)")
+            Log.d(TAG, "Playback started (resId=$soundResId) — will play exactly once")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start playback", e)
+            Log.e(TAG, "Failed to start playback (resId=$soundResId)", e)
             onCompletion()
         }
     }

@@ -119,6 +119,67 @@ object PrayerTimePreferences {
         prefs(context).edit().putBoolean("prayer_full_screen", enabled).apply()
     }
 
+    // ---- cached prayer timings (JSON) ----
+    // We persist the last successfully-fetched timings JSON so that when the user
+    // reopens the app, the prayer times screen can display them immediately
+    // without forcing the user to press "refresh". The cache is considered stale
+    // if it is older than [CACHE_MAX_AGE_HOURS] hours OR if the stored date
+    // (gregorianDate) does not match today's date.
+    private const val KEY_TIMINGS_JSON = "prayer_timings_json_cache"
+    private const val KEY_TIMINGS_CACHED_AT = "prayer_timings_cached_at"
+    private const val CACHE_MAX_AGE_HOURS = 12L
+
+    /** Save the raw Aladhan JSON response so it can be restored on next app launch. */
+    fun saveCachedTimings(context: Context, json: String) {
+        prefs(context).edit()
+            .putString(KEY_TIMINGS_JSON, json)
+            .putLong(KEY_TIMINGS_CACHED_AT, System.currentTimeMillis())
+            .apply()
+    }
+
+    /** Returns the cached JSON string, or null if there is no cache. */
+    fun getCachedTimingsJson(context: Context): String? =
+        prefs(context).getString(KEY_TIMINGS_JSON, null)
+
+    /** Returns the timestamp (millis) when the cache was last written, or 0 if never. */
+    fun getCachedTimingsAge(context: Context): Long =
+        prefs(context).getLong(KEY_TIMINGS_CACHED_AT, 0L)
+
+    /**
+     * Returns true iff the cached timings are still considered fresh enough to
+     * display without forcing a re-fetch.
+     *
+     * Fresh = cached within the last [CACHE_MAX_AGE_HOURS] hours AND the
+     * gregorianDate embedded in the JSON matches today's date.
+     */
+    fun isCacheFresh(context: Context): Boolean {
+        val cachedAt = getCachedTimingsAge(context)
+        if (cachedAt <= 0L) return false
+        val ageMs = System.currentTimeMillis() - cachedAt
+        if (ageMs > CACHE_MAX_AGE_HOURS * 60L * 60L * 1000L) return false
+        // Also verify the date inside the JSON matches today
+        val json = getCachedTimingsJson(context) ?: return false
+        return try {
+            val root = org.json.JSONObject(json)
+            val data = root.getJSONObject("data")
+            val gregorian = data.getJSONObject("date").getJSONObject("gregorian")
+            val dateStr = gregorian.optString("date", "") // "03-08-2026"
+            val today = java.text.SimpleDateFormat("dd-MM-yyyy", java.util.Locale.US)
+                .format(java.util.Date())
+            dateStr == today
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** Clears the cached timings (used when the user disables the feature). */
+    fun clearCachedTimings(context: Context) {
+        prefs(context).edit()
+            .remove(KEY_TIMINGS_JSON)
+            .remove(KEY_TIMINGS_CACHED_AT)
+            .apply()
+    }
+
     /**
      * Available calculation methods (subset of Aladhan's).
      * https://aladhan.com/calculation-methods

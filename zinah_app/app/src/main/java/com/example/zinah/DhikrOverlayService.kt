@@ -22,22 +22,20 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import kotlin.math.abs
 
 /**
- * Premium side overlay notification service.
+ * Centered rectangular premium overlay notification service.
  *
  * Design philosophy (inspired by top-tier apps like Muslim Pro, Pillars, etc.):
- *  - Compact pill-shaped card on the right edge (not center)
- *  - Smooth slide-in animation from the right edge
- *  - Subtle scale-up for the icon
+ *  - Wider RECTANGULAR card centered on screen (not a square pill on the side)
+ *  - Lower corner radius (~16dp) so the card reads as a rectangle, not a pill
+ *  - Smooth scale+fade-in animation
  *  - Glassmorphism-like layered backgrounds (gold accent ring + emerald core)
  *  - Clean typography hierarchy: small gold label → bold white dhikr
- *  - Auto-dismiss after 10s with fade-out
- *  - Draggable on Y axis; tap to dismiss
+ *  - Auto-dismiss after 8s with fade-out
+ *  - Tap anywhere to dismiss
  *
- * Position: RIGHT edge, vertically centered (unchanged from original — user wants
- * "side notification" not center).
+ * Position: CENTER of screen (both horizontally and vertically).
  */
 class DhikrOverlayService : Service() {
 
@@ -51,8 +49,8 @@ class DhikrOverlayService : Service() {
         val dhikrText = intent?.getStringExtra("dhikr_text") ?: "صلي على محمد"
         showOverlay(dhikrText)
 
-        // Auto-remove after 10 seconds
-        handler.postDelayed({ stopSelf() }, 10_000)
+        // Auto-remove after 8 seconds (shorter than before since the card is more prominent)
+        handler.postDelayed({ stopSelf() }, 8_000)
         return START_NOT_STICKY
     }
 
@@ -64,9 +62,13 @@ class DhikrOverlayService : Service() {
     private fun showOverlay(text: String) {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
+        // ===== Window params: CENTER of the screen =====
+        // We use MATCH_PARENT width with horizontal padding so the card visually
+        // sits in the center while the touch surface covers the whole screen
+        // (tap anywhere to dismiss).
         val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else
@@ -77,13 +79,23 @@ class DhikrOverlayService : Service() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.CENTER_VERTICAL or Gravity.END
-            x = dpToPx(12)
-            y = 0
+            gravity = Gravity.CENTER
         }
 
-        // ===== Outer container — emerald gradient with gold accent border =====
-        val container = FrameLayout(this).apply {
+        // ===== Root container: full-screen transparent click-catcher =====
+        // Tapping anywhere outside the card dismisses the overlay.
+        val root = FrameLayout(this).apply {
+            // Use a dim scrim so the card stands out (40% black)
+            setBackgroundColor(Color.parseColor("#66000000"))
+        }
+
+        // ===== Outer card: RECTANGULAR with modest corner radius =====
+        // Width is constrained to 86% of screen width so it always looks like
+        // a rectangle on phones of any size.
+        val displayWidth = resources.displayMetrics.widthPixels
+        val cardWidth = (displayWidth * 0.86f).toInt()
+
+        val card = FrameLayout(this).apply {
             val shape = GradientDrawable().apply {
                 orientation = GradientDrawable.Orientation.TL_BR
                 colors = intArrayOf(
@@ -92,46 +104,48 @@ class DhikrOverlayService : Service() {
                     Color.parseColor("#FF052E16")   // darkest
                 )
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = dpToPx(28).toFloat()
-                setStroke(dpToPx(1), Color.parseColor("#40D4AF37")) // subtle gold border
+                // Lower radius → rectangular (not pill). 16dp reads as a soft rectangle.
+                cornerRadius = dpToPx(16).toFloat()
+                // Subtle gold border for premium feel
+                setStroke(dpToPx(1), Color.parseColor("#66D4AF37"))
             }
             background = shape
-            setPadding(dpToPx(4), dpToPx(4), dpToPx(4), dpToPx(4))
-            elevation = dpToPx(16).toFloat()
-            // Start invisible for slide-in animation
+            // Symmetric padding so the inner content is balanced
+            setPadding(dpToPx(20), dpToPx(22), dpToPx(20), dpToPx(22))
+            elevation = dpToPx(20).toFloat()
+            // Start invisible for scale-in animation
             alpha = 0f
-            translationX = dpToPx(100).toFloat()
+            scaleX = 0.85f
+            scaleY = 0.85f
+            layoutParams = FrameLayout.LayoutParams(
+                cardWidth,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            )
         }
 
-        // ===== Inner content card (gold accent ring) =====
-        val innerCard = FrameLayout(this).apply {
-            val innerShape = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                setColor(Color.parseColor("#0FFFFFFF")) // very subtle white overlay
-                cornerRadius = dpToPx(24).toFloat()
-            }
-            background = innerShape
-            setPadding(dpToPx(18), dpToPx(16), dpToPx(18), dpToPx(16))
-        }
-
-        // ===== Vertical layout: icon row + dhikr text =====
+        // ===== Inner content layout (vertical) =====
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
         }
 
-        // ===== Top row: icon + app name =====
+        // ===== Top row: icon in gold circle + app name =====
         val topRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dpToPx(10) }
+            ).apply { bottomMargin = dpToPx(14) }
             layoutParams = lp
         }
 
-        // Crescent icon in gold circle
+        // Crescent icon in gold circle (kept for brand identity)
         val iconBg = FrameLayout(this).apply {
             val bg = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
@@ -143,7 +157,7 @@ class DhikrOverlayService : Service() {
                 orientation = GradientDrawable.Orientation.TL_BR
             }
             background = bg
-            val size = dpToPx(36)
+            val size = dpToPx(34)
             layoutParams = LinearLayout.LayoutParams(size, size).apply {
                 marginEnd = dpToPx(10)
             }
@@ -151,22 +165,34 @@ class DhikrOverlayService : Service() {
         val icon = ImageView(this).apply {
             setImageResource(R.drawable.ic_notification)
             setColorFilter(Color.parseColor("#FF0B3D20")) // dark emerald icon on gold bg
-            val iconSize = dpToPx(20)
+            val iconSize = dpToPx(18)
             layoutParams = FrameLayout.LayoutParams(iconSize, iconSize, Gravity.CENTER)
         }
         iconBg.addView(icon)
 
-        // App name
         val appName = TextView(this).apply {
             this.text = "زينة"
             setTextColor(Color.parseColor("#FFFFD700"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
+        // Small "ذكر اليوم" label
+        val tagLabel = TextView(this).apply {
+            this.text = "• ذكر"
+            setTextColor(Color.parseColor("#AAFFD700"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = dpToPx(6) }
+            layoutParams = lp
+        }
         topRow.addView(iconBg)
         topRow.addView(appName)
+        topRow.addView(tagLabel)
 
-        // ===== Gold divider =====
+        // ===== Gold divider (full card width) =====
         val divider = View(this).apply {
             background = GradientDrawable().apply {
                 orientation = GradientDrawable.Orientation.LEFT_RIGHT
@@ -176,64 +202,55 @@ class DhikrOverlayService : Service() {
                     Color.parseColor("#00FFD700")
                 )
             }
-            layoutParams = LinearLayout.LayoutParams(dpToPx(120), dpToPx(1)).apply {
-                bottomMargin = dpToPx(10)
-            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dpToPx(1)
+            ).apply { bottomMargin = dpToPx(14) }
         }
 
-        // ===== Dhikr text =====
+        // ===== Dhikr text (the main content) =====
         val dhikrView = TextView(this).apply {
             this.text = text
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             gravity = Gravity.CENTER
-            maxWidth = dpToPx(200)
-            setLineSpacing(dpToPx(2).toFloat(), 1f)
+            // Allow the text to wrap onto multiple lines on long adhkar
+            val computedMaxWidth = cardWidth - dpToPx(40) // 20dp padding on each side
+            val safeMaxWidth = if (computedMaxWidth > 0) computedMaxWidth else dpToPx(280)
+            setMaxWidth(safeMaxWidth)
+            setLineSpacing(dpToPx(3).toFloat(), 1f)
+        }
+
+        // ===== Bottom hint: "اضغط للإغلاق" =====
+        val hint = TextView(this).apply {
+            this.text = "اضغط للإغلاق"
+            setTextColor(Color.parseColor("#80FFFFFF"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dpToPx(12) }
+            layoutParams = lp
         }
 
         // Build layout
         layout.addView(topRow)
         layout.addView(divider)
         layout.addView(dhikrView)
-        innerCard.addView(layout)
-        container.addView(innerCard)
-        floatingView = container
+        layout.addView(hint)
 
-        // ===== Touch: drag on Y, tap to dismiss =====
+        card.addView(layout)
+        root.addView(card)
+        floatingView = root
+
+        // ===== Touch: tap anywhere to dismiss =====
         floatingView?.setOnTouchListener(object : View.OnTouchListener {
-            private var initialY = 0
-            private var initialTouchY = 0f
-            private var moved = false
-
             override fun onTouch(v: View, event: MotionEvent): Boolean {
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        initialY = params.y
-                        initialTouchY = event.rawY
-                        moved = false
-                        // Scale down slightly on press (tactile feedback)
-                        v.animate().scaleX(0.95f).scaleY(0.95f)
-                            .setDuration(100).start()
-                        return true
-                    }
-                    MotionEvent.ACTION_UP -> {
-                        v.animate().scaleX(1f).scaleY(1f)
-                            .setDuration(100).start()
-                        if (!moved) stopSelf()
-                        return true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        val dy = event.rawY - initialTouchY
-                        if (abs(dy) > 10) {
-                            moved = true
-                            params.y = initialY + dy.toInt()
-                            try {
-                                windowManager?.updateViewLayout(floatingView, params)
-                            } catch (_: Exception) {}
-                        }
-                        return true
-                    }
+                if (event.action == MotionEvent.ACTION_UP) {
+                    stopSelf()
+                    return true
                 }
                 return false
             }
@@ -241,20 +258,21 @@ class DhikrOverlayService : Service() {
 
         try {
             windowManager?.addView(floatingView, params)
-            // Slide-in animation + fade-in
-            floatingView?.animate()
-                ?.translationX(0f)
+            // Scale-in + fade-in animation
+            card.animate()
                 ?.alpha(1f)
-                ?.setDuration(400)
-                ?.setInterpolator(OvershootInterpolator(0.8f))
+                ?.scaleX(1f)
+                ?.scaleY(1f)
+                ?.setDuration(350)
+                ?.setInterpolator(OvershootInterpolator(0.6f))
                 ?.start()
-            // Scale-up icon for premium feel
+            // Subtle delayed scale-up for the icon
             iconBg.scaleX = 0f
             iconBg.scaleY = 0f
             iconBg.animate()
                 .scaleX(1f).scaleY(1f)
-                .setDuration(500)
-                .setStartDelay(200)
+                .setDuration(400)
+                .setStartDelay(150)
                 .setInterpolator(AccelerateDecelerateInterpolator())
                 .start()
         } catch (e: Exception) {
@@ -267,8 +285,7 @@ class DhikrOverlayService : Service() {
         // Fade-out animation before removing
         floatingView?.animate()
             ?.alpha(0f)
-            ?.translationX(dpToPx(100).toFloat())
-            ?.setDuration(300)
+            ?.setDuration(250)
             ?.withEndAction {
                 try {
                     floatingView?.let { windowManager?.removeView(it) }

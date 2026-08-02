@@ -25,9 +25,14 @@ object AdhanApiService {
     private const val CONNECT_TIMEOUT_MS = 15_000
     private const val READ_TIMEOUT_MS = 20_000
 
-    /** Result wrapper — caller decides what to do on failure. */
+    /**
+     * Result wrapper — caller decides what to do on failure.
+     *
+     * Success carries both the parsed [PrayerTimings] and the raw JSON string
+     * so the caller can persist the JSON to SharedPreferences for offline reuse.
+     */
     sealed class Result<out T> {
-        data class Success<T>(val data: T) : Result<T>()
+        data class Success<T>(val data: T, val rawJson: String = "") : Result<T>()
         data class Error(val message: String, val cause: Throwable? = null) : Result<Nothing>()
     }
 
@@ -92,7 +97,7 @@ object AdhanApiService {
 
             Log.d(TAG, "Response length: ${body.length}")
             val parsed = PrayerTimings.fromAladhanJson(body, Calendar.getInstance())
-            Result.Success(parsed)
+            Result.Success(parsed, body)
         } catch (e: Throwable) {
             Log.e(TAG, "executeRequest failed", e)
             Result.Error("تعذّر جلب المواقيت: ${e.message ?: "خطأ في الشبكة"}", e)

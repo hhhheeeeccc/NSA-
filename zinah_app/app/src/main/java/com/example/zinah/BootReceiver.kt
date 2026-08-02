@@ -103,6 +103,9 @@ class BootReceiver : BroadcastReceiver() {
             when (result) {
                 is AdhanApiService.Result.Success -> {
                     try {
+                        // Persist the freshly-fetched timings so the next app launch
+                        // can restore them from cache.
+                        PrayerTimePreferences.saveCachedTimings(context, result.rawJson)
                         PrayerTimeScheduler.scheduleAll(context, result.data)
                         Log.d(TAG, "Prayer times re-scheduled after boot")
                     } catch (e: Exception) {
@@ -111,6 +114,20 @@ class BootReceiver : BroadcastReceiver() {
                 }
                 is AdhanApiService.Result.Error -> {
                     Log.e(TAG, "Failed to fetch prayer times after boot: ${result.message}")
+                    // Fallback: try to schedule from cached JSON if available.
+                    // This ensures alarms still fire after a reboot even if the
+                    // network is not yet available.
+                    try {
+                        val cachedJson = PrayerTimePreferences.getCachedTimingsJson(context)
+                        if (cachedJson != null) {
+                            val parsed = PrayerTimings.fromAladhanJson(cachedJson,
+                                java.util.Calendar.getInstance())
+                            PrayerTimeScheduler.scheduleAll(context, parsed)
+                            Log.d(TAG, "Prayer times re-scheduled from cache after boot")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Fallback cache schedule failed: ${e.message}")
+                    }
                 }
             }
         } catch (e: Throwable) {
