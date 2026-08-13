@@ -1,8 +1,10 @@
 package com.example.zinah
 
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
@@ -13,44 +15,61 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.AccelerateDecelerateInterpolator
-import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import kotlin.math.max
+import kotlin.math.min
 
 /**
- * Centered rectangular premium overlay notification service.
+ * بطاقة دعاء جانبية تظهر من الحافة اليمنى أثناء القراءة.
  *
- * Design philosophy (inspired by top-tier apps like Muslim Pro, Pillars, etc.):
- *  - Wider RECTANGULAR card centered on screen (not a square pill on the side)
- *  - Lower corner radius (~16dp) so the card reads as a rectangle, not a pill
- *  - Smooth scale+fade-in animation
- *  - Glassmorphism-like layered backgrounds (gold accent ring + emerald core)
- *  - Clean typography hierarchy: small gold label → bold white dhikr
- *  - Auto-dismiss after 8s with fade-out
- *  - Tap anywhere to dismiss
- *
- * Position: CENTER of screen (both horizontally and vertically).
+ * تعتمد البطاقة على حركة انتقالية خفيفة بدلاً من تغطية الشاشة كاملةً، وتبقى
+ * مرئية حتى اكتمال القراءة أو حتى انتهاء مهلة احتياطية محسوبة من طول النص.
  */
 class DhikrOverlayService : Service() {
 
     private var windowManager: WindowManager? = null
-    private var floatingView: View? = null
+    private var cardView: View? = null
+    private var isDismissing = false
+    private var isSpeechReceiverRegistered = false
     private val handler = Handler(Looper.getMainLooper())
+    private val fallbackDismiss = Runnable { dismissOverlay() }
+    private val speechFinishedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == DhikrSpeechPlayer.ACTION_DHIKR_SPEECH_FINISHED) {
+                dismissOverlay()
+            }
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        val filter = IntentFilter(DhikrSpeechPlayer.ACTION_DHIKR_SPEECH_FINISHED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(speechFinishedReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(speechFinishedReceiver, filter)
+        }
+        isSpeechReceiverRegistered = true
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val dhikrText = intent?.getStringExtra("dhikr_text") ?: "صلي على محمد"
-        showOverlay(dhikrText)
+        if (intent?.action == ACTION_DISMISS) {
+            dismissOverlay()
+            return START_NOT_STICKY
+        }
 
-        // Auto-remove after 8 seconds (shorter than before since the card is more prominent)
-        handler.postDelayed({ stopSelf() }, 8_000)
+        val dhikrText = intent?.getStringExtra(EXTRA_DHIKR_TEXT) ?: "سبحان الله وبحمده"
+        showOverlay(dhikrText)
+        scheduleFallbackDismiss(dhikrText)
         return START_NOT_STICKY
     }
 
@@ -60,238 +79,256 @@ class DhikrOverlayService : Service() {
         ).toInt()
 
     private fun showOverlay(text: String) {
+        removeCardImmediately()
+        isDismissing = false
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
-        // ===== Window params: CENTER of the screen =====
-        // We use MATCH_PARENT width with horizontal padding so the card visually
-        // sits in the center while the touch surface covers the whole screen
-        // (tap anywhere to dismiss).
+        val displayWidth = resources.displayMetrics.widthPixels
+        val cardWidth = min((displayWidth * 0.84f).toInt(), dpToPx(360))
         val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            cardWidth,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
+            } else {
                 @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE,
+                WindowManager.LayoutParams.TYPE_PHONE
+            },
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.CENTER
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            x = dpToPx(12)
         }
-
-        // ===== Root container: full-screen transparent click-catcher =====
-        // Tapping anywhere outside the card dismisses the overlay.
-        val root = FrameLayout(this).apply {
-            // Use a dim scrim so the card stands out (40% black)
-            setBackgroundColor(Color.parseColor("#66000000"))
-        }
-
-        // ===== Outer card: RECTANGULAR with modest corner radius =====
-        // Width is constrained to 86% of screen width so it always looks like
-        // a rectangle on phones of any size.
-        val displayWidth = resources.displayMetrics.widthPixels
-        val cardWidth = (displayWidth * 0.86f).toInt()
 
         val card = FrameLayout(this).apply {
-            val shape = GradientDrawable().apply {
+            background = GradientDrawable().apply {
                 orientation = GradientDrawable.Orientation.TL_BR
                 colors = intArrayOf(
-                    Color.parseColor("#FF1B5E20"),  // emerald deep
-                    Color.parseColor("#FF0B3D20"),  // darker
-                    Color.parseColor("#FF052E16")   // darkest
+                    Color.parseColor("#FF164B31"),
+                    Color.parseColor("#FF0A3020"),
+                    Color.parseColor("#FF062316")
                 )
-                shape = GradientDrawable.RECTANGLE
-                // Lower radius → rectangular (not pill). 16dp reads as a soft rectangle.
-                cornerRadius = dpToPx(16).toFloat()
-                // Subtle gold border for premium feel
-                setStroke(dpToPx(1), Color.parseColor("#66D4AF37"))
+                cornerRadius = dpToPx(20).toFloat()
+                setStroke(dpToPx(1), Color.parseColor("#88E2C56B"))
             }
-            background = shape
-            // Symmetric padding so the inner content is balanced
-            setPadding(dpToPx(20), dpToPx(22), dpToPx(20), dpToPx(22))
-            elevation = dpToPx(20).toFloat()
-            // Start invisible for scale-in animation
+            elevation = dpToPx(18).toFloat()
             alpha = 0f
-            scaleX = 0.85f
-            scaleY = 0.85f
+            scaleX = 0.98f
+            scaleY = 0.98f
+            translationX = (cardWidth + dpToPx(28)).toFloat()
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+        }
+
+        val accentBar = View(this).apply {
+            background = GradientDrawable().apply {
+                orientation = GradientDrawable.Orientation.TOP_BOTTOM
+                colors = intArrayOf(
+                    Color.parseColor("#FFFFD978"),
+                    Color.parseColor("#FFCBA843")
+                )
+                cornerRadii = floatArrayOf(
+                    dpToPx(20).toFloat(), dpToPx(20).toFloat(),
+                    0f, 0f,
+                    0f, 0f,
+                    dpToPx(20).toFloat(), dpToPx(20).toFloat()
+                )
+            }
             layoutParams = FrameLayout.LayoutParams(
-                cardWidth,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER
+                dpToPx(4),
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                Gravity.END
             )
         }
 
-        // ===== Inner content layout (vertical) =====
-        val layout = LinearLayout(this).apply {
+        val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
+            setPadding(dpToPx(18), dpToPx(18), dpToPx(22), dpToPx(16))
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             )
         }
 
-        // ===== Top row: icon in gold circle + app name =====
         val topRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dpToPx(14) }
-            layoutParams = lp
+            ).apply { bottomMargin = dpToPx(12) }
         }
 
-        // Crescent icon in gold circle (kept for brand identity)
-        val iconBg = FrameLayout(this).apply {
-            val bg = GradientDrawable().apply {
+        val iconBackground = FrameLayout(this).apply {
+            background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 colors = intArrayOf(
-                    Color.parseColor("#FFFFD700"),
-                    Color.parseColor("#FFD4AF37"),
-                    Color.parseColor("#FFB8860B")
+                    Color.parseColor("#FFFFDD75"),
+                    Color.parseColor("#FFD3A83B")
                 )
                 orientation = GradientDrawable.Orientation.TL_BR
             }
-            background = bg
-            val size = dpToPx(34)
-            layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                marginEnd = dpToPx(10)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(34), dpToPx(34)).apply {
+                marginEnd = dpToPx(9)
             }
         }
         val icon = ImageView(this).apply {
             setImageResource(R.drawable.ic_notification)
-            setColorFilter(Color.parseColor("#FF0B3D20")) // dark emerald icon on gold bg
-            val iconSize = dpToPx(18)
-            layoutParams = FrameLayout.LayoutParams(iconSize, iconSize, Gravity.CENTER)
+            setColorFilter(Color.parseColor("#FF113D29"))
+            layoutParams = FrameLayout.LayoutParams(dpToPx(18), dpToPx(18), Gravity.CENTER)
         }
-        iconBg.addView(icon)
+        iconBackground.addView(icon)
 
         val appName = TextView(this).apply {
             this.text = "زينة"
-            setTextColor(Color.parseColor("#FFFFD700"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setTextColor(Color.parseColor("#FFFFDF80"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        // Small "ذكر اليوم" label
-        val tagLabel = TextView(this).apply {
-            this.text = "• ذكر"
-            setTextColor(Color.parseColor("#AAFFD700"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { marginStart = dpToPx(6) }
-            layoutParams = lp
-        }
-        topRow.addView(iconBg)
-        topRow.addView(appName)
-        topRow.addView(tagLabel)
 
-        // ===== Gold divider (full card width) =====
+        val readingState = TextView(this).apply {
+            this.text = "●  جاري قراءة الدعاء"
+            setTextColor(Color.parseColor("#BDE1FFD9"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            layoutParams = LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1f
+            ).apply { marginStart = dpToPx(8) }
+        }
+        topRow.addView(iconBackground)
+        topRow.addView(appName)
+        topRow.addView(readingState)
+
         val divider = View(this).apply {
             background = GradientDrawable().apply {
                 orientation = GradientDrawable.Orientation.LEFT_RIGHT
                 colors = intArrayOf(
-                    Color.parseColor("#00FFD700"),
-                    Color.parseColor("#FFFFD700"),
-                    Color.parseColor("#00FFD700")
+                    Color.parseColor("#00D4AF37"),
+                    Color.parseColor("#A8F5D66D"),
+                    Color.parseColor("#00D4AF37")
                 )
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dpToPx(1)
-            ).apply { bottomMargin = dpToPx(14) }
+            ).apply { bottomMargin = dpToPx(12) }
         }
 
-        // ===== Dhikr text (the main content) =====
         val dhikrView = TextView(this).apply {
             this.text = text
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             gravity = Gravity.CENTER
-            // Allow the text to wrap onto multiple lines on long adhkar
-            val computedMaxWidth = cardWidth - dpToPx(40) // 20dp padding on each side
-            val safeMaxWidth = if (computedMaxWidth > 0) computedMaxWidth else dpToPx(280)
-            setMaxWidth(safeMaxWidth)
-            setLineSpacing(dpToPx(3).toFloat(), 1f)
+            setLineSpacing(dpToPx(3).toFloat(), 1.05f)
         }
 
-        // ===== Bottom hint: "اضغط للإغلاق" =====
         val hint = TextView(this).apply {
-            this.text = "اضغط للإغلاق"
-            setTextColor(Color.parseColor("#80FFFFFF"))
+            this.text = "اضغط للإخفاء"
+            setTextColor(Color.parseColor("#99FFFFFF"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dpToPx(12) }
-            layoutParams = lp
         }
 
-        // Build layout
-        layout.addView(topRow)
-        layout.addView(divider)
-        layout.addView(dhikrView)
-        layout.addView(hint)
-
-        card.addView(layout)
-        root.addView(card)
-        floatingView = root
-
-        // ===== Touch: tap anywhere to dismiss =====
-        floatingView?.setOnTouchListener(object : View.OnTouchListener {
-            override fun onTouch(v: View, event: MotionEvent): Boolean {
-                if (event.action == MotionEvent.ACTION_UP) {
-                    stopSelf()
-                    return true
-                }
-                return false
-            }
-        })
+        content.addView(topRow)
+        content.addView(divider)
+        content.addView(dhikrView)
+        content.addView(hint)
+        card.addView(content)
+        card.addView(accentBar)
+        card.setOnClickListener { dismissOverlay() }
+        cardView = card
 
         try {
-            windowManager?.addView(floatingView, params)
-            // Scale-in + fade-in animation
+            windowManager?.addView(card, params)
             card.animate()
-                ?.alpha(1f)
-                ?.scaleX(1f)
-                ?.scaleY(1f)
-                ?.setDuration(350)
-                ?.setInterpolator(OvershootInterpolator(0.6f))
-                ?.start()
-            // Subtle delayed scale-up for the icon
-            iconBg.scaleX = 0f
-            iconBg.scaleY = 0f
-            iconBg.animate()
-                .scaleX(1f).scaleY(1f)
-                .setDuration(400)
-                .setStartDelay(150)
+                .alpha(1f)
+                .translationX(0f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(360)
                 .setInterpolator(AccelerateDecelerateInterpolator())
                 .start()
-        } catch (e: Exception) {
-            // Permission might have been revoked
+            pulseReadingState(readingState)
+        } catch (_: Exception) {
+            removeCardImmediately()
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        // Fade-out animation before removing
-        floatingView?.animate()
-            ?.alpha(0f)
-            ?.setDuration(250)
-            ?.withEndAction {
-                try {
-                    floatingView?.let { windowManager?.removeView(it) }
-                } catch (_: Exception) {}
+    private fun pulseReadingState(readingState: TextView) {
+        readingState.animate()
+            .alpha(0.45f)
+            .setDuration(700)
+            .withEndAction {
+                readingState.animate()
+                    .alpha(1f)
+                    .setDuration(700)
+                    .withEndAction {
+                        if (!isDismissing && cardView != null) pulseReadingState(readingState)
+                    }
+                    .start()
             }
-            ?.start()
+            .start()
+    }
+
+    private fun scheduleFallbackDismiss(text: String) {
+        handler.removeCallbacks(fallbackDismiss)
+        val estimatedDurationMs = text.trim().split(Regex("\\s+")).size * 780L + 8_000L
+        handler.postDelayed(fallbackDismiss, max(15_000L, min(60_000L, estimatedDurationMs)))
+    }
+
+    private fun dismissOverlay() {
+        if (isDismissing) return
+        isDismissing = true
+        handler.removeCallbacks(fallbackDismiss)
+        val card = cardView ?: run {
+            stopSelf()
+            return
+        }
+        val exitDistance = max(card.width, dpToPx(280)) + dpToPx(28)
+        card.animate()
+            .alpha(0f)
+            .translationX(exitDistance.toFloat())
+            .scaleX(0.98f)
+            .scaleY(0.98f)
+            .setDuration(240)
+            .setInterpolator(AccelerateDecelerateInterpolator())
+            .withEndAction { stopSelf() }
+            .start()
+    }
+
+    private fun removeCardImmediately() {
+        cardView?.let { view ->
+            try {
+                windowManager?.removeViewImmediate(view)
+            } catch (_: Exception) {
+            }
+        }
+        cardView = null
+    }
+
+    override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        if (isSpeechReceiverRegistered) {
+            try {
+                unregisterReceiver(speechFinishedReceiver)
+            } catch (_: Exception) {
+            }
+            isSpeechReceiverRegistered = false
+        }
+        removeCardImmediately()
+        super.onDestroy()
+    }
+
+    companion object {
+        const val ACTION_DISMISS = "com.example.zinah.DISMISS_DHIKR_OVERLAY"
+        const val EXTRA_DHIKR_TEXT = "dhikr_text"
     }
 }
