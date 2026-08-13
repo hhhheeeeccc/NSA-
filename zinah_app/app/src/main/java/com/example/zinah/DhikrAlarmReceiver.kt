@@ -10,7 +10,9 @@ import android.content.Intent
 import android.os.Build
 import android.os.PowerManager
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import android.media.AudioAttributes
+import android.media.MediaPlayer
 
 class DhikrAlarmReceiver : BroadcastReceiver() {
 
@@ -41,6 +43,8 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
         val channelId = "zinah_dhikr_silent_v2"
         val sharedPref = context.getSharedPreferences("ZinahPrefs", Context.MODE_PRIVATE)
 
+        val soundResId = R.raw.sali_ala_mohammad
+        val soundUri = android.net.Uri.parse("android.resource://${context.packageName}/$soundResId")
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             // Delete old channels if they exist (best-effort)
@@ -84,11 +88,12 @@ class DhikrAlarmReceiver : BroadcastReceiver() {
         }
         context.startService(overlayIntent)
 
-        // اقرأ النص نفسه الذي ظهر في الإشعار، بدلاً من تشغيل التسجيل الثابت.
+        // Play the sound ONCE using AdhanPlayer singleton (prevents double playback
+        // if multiple alarms fire at the same time)
         try {
-            DhikrSpeechPlayer.speak(context, randomDhikr)
+            AdhanPlayer.play(context, soundResId = R.raw.sali_ala_mohammad)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to read dhikr text", e)
+            Log.e(TAG, "Failed to play dhikr sound", e)
         }
     }
 
